@@ -25,6 +25,7 @@
     if (th) {
       cam.skyTop = th.skyTop; cam.skyBottom = th.skyBottom; cam.fogColor = th.fog;
       cam.sunDir = th.sunDir; cam.ambient = th.ambient == null ? 0.58 : th.ambient;
+      if (NB.gl) NB.gl.bloom = th.bloom == null ? 0.8 : th.bloom;
     }
     if (!g.player || g.phase === 'menu' || g.phase === 'finished') orbit(g, dt);
     else chase(g, g.player, dt);

@@ -296,6 +296,7 @@
     NB.gl.draw(m.dark, mm);
     if (NB.fx) {
       NB.fx.shadow(k.pos[0], k.pos[2], 1.15, k.onGround ? 0.34 : 0.16);
+      if (k.onGround) NB.fx.underglow(k.pos[0], k.pos[2], k.yaw, k.color);
       if (k.shieldT > 0) NB.fx.shieldBubble(k.pos, k.shieldT);
       if (k.ramT > 0) NB.fx.ramGlow(k.pos, k.yaw);
     }

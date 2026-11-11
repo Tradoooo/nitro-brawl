@@ -155,6 +155,7 @@
 
   F.draw = function () {
     if (!NB.gl || !NB.gl.gl || !NB.gl.gl()) return;
+    drawGlows();
     drawShadows();
     drawSkids();
     drawRings();
@@ -223,6 +224,29 @@
         [b.c[0] * a, b.c[1] * a, b.c[2] * a]);
     }
     NB.gl.flushBatch();
+  }
+
+  var glows = [];
+  F.underglow = function (x, z, yaw, color) {
+    if (glows.length < 32) glows.push([x, z, yaw, color]);
+  };
+
+  function drawGlows() {
+    if (!glows.length) return;
+    NB.gl.beginBatch();
+    for (var i = 0; i < glows.length; i++) {
+      var g = glows[i];
+      var c = [g[3][0] * 1.9, g[3][1] * 1.9, g[3][2] * 1.9];
+      var f = [-Math.sin(g[2]), -Math.cos(g[2])], r = [Math.cos(g[2]), -Math.sin(g[2])];
+      var hw = 0.78, hl = 1.2, y = 0.07;
+      NB.gl.batchQuad(
+        [g[0] - f[0] * hl - r[0] * hw, y, g[1] - f[1] * hl - r[1] * hw],
+        [g[0] - f[0] * hl + r[0] * hw, y, g[1] - f[1] * hl + r[1] * hw],
+        [g[0] + f[0] * hl + r[0] * hw, y, g[1] + f[1] * hl + r[1] * hw],
+        [g[0] + f[0] * hl - r[0] * hw, y, g[1] + f[1] * hl - r[1] * hw], c);
+    }
+    NB.gl.flushBatch();
+    glows.length = 0;
   }
 
   F.shieldBubble = function (pos, t) {

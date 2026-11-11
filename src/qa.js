@@ -106,6 +106,48 @@
     }
   }
 
+  // export PNG fait par le jeu lui-même (readPixels -> PNG via canvas 2D)
+  Q.png = function () {
+    var gl = NB.gl.gl();
+    var w = gl.drawingBufferWidth, h = gl.drawingBufferHeight;
+    var px = new Uint8Array(w * h * 4);
+    gl.readPixels(0, 0, w, h, gl.RGBA, gl.UNSIGNED_BYTE, px);
+    var cv = document.createElement('canvas');
+    cv.width = w; cv.height = h;
+    var cx = cv.getContext('2d');
+    var img = cx.createImageData(w, h);
+    for (var y = 0; y < h; y++) {
+      var src = (h - 1 - y) * w * 4, dst = y * w * 4;
+      img.data.set(px.subarray(src, src + w * 4), dst);
+    }
+    cx.putImageData(img, 0, 0);
+    return cv.toDataURL('image/png');
+  };
+
+  Q.probe = function (fx, fy) {
+    var gl = NB.gl.gl();
+    if (!gl) return 'nogl';
+    var px = new Uint8Array(4);
+    gl.readPixels(fx | 0, fy | 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, px);
+    return px[0] + ',' + px[1] + ',' + px[2];
+  };
+
+  Q.tick = function () {
+    if (Q.done) return;
+    if (/[?&]probe=1/.test(location.search)) {
+      Q.done = true;
+      var W = NB.gl.width, H = NB.gl.height;
+      document.title = 'PROBE under=' + Q.probe(W / 2, H * 0.28) +
+        ' floor=' + Q.probe(W / 2, H * 0.12) + ' sky=' + Q.probe(W / 2, H * 0.9);
+    } else if (/[?&]png=1/.test(location.search)) {
+      Q.done = true;
+      var pre = document.createElement('pre');
+      pre.id = 'qapng';
+      pre.textContent = Q.png();
+      document.body.appendChild(pre);
+    }
+  };
+
   Q.draw = function (name) {
     if (name === 'kart') {
       panels([

@@ -235,7 +235,7 @@ touch-action:none;user-select:none;-webkit-user-select:none;overscroll-behavior:
   NB.M = M;
 })(window.NB = window.NB || {});
 
-/* ==== gl.js (417 lignes) ==== */
+/* ==== gl.js (498 lignes) ==== */
 // NITRO BRAWL — couche de rendu : adaptateur Three.js r149.
 // Éclairage/gamma/fog dans NOTRE shader (identique sur tous les navigateurs),
 // Three gère scène, meshs, matrices, caméra, tri du transparent.
@@ -253,6 +253,9 @@ touch-action:none;user-select:none;-webkit-user-select:none;overscroll-behavior:
   var IDENTITY = null;
   var camRight = [1, 0, 0], camUp = [0, 1, 0];
   var lastFov = -1, lastTheme = '', lastAspect = -1;
+  var rtScene = null, rtA = null, rtB = null, postQuad = null, postCam = null;
+  var matBright = null, matBlur = null, matComp = null;
+  G.bloom = 1.6;
 
   // uniforms partagés par tous les matériaux opaques
   var U = {
@@ -363,7 +366,7 @@ touch-action:none;user-select:none;-webkit-user-select:none;overscroll-behavior:
     sun = new THREE.Sprite(new THREE.SpriteMaterial({
       map: tex, blending: THREE.AdditiveBlending, depthWrite: false, transparent: true, fog: false
     }));
-    sun.scale.set(240, 240, 1);
+    sun.scale.set(110, 110, 1);
     scene.add(sun);
   }
 
@@ -409,12 +412,69 @@ touch-action:none;user-select:none;-webkit-user-select:none;overscroll-behavior:
     sprNrm = n.mesh; sprNrmGeo = n.geo; sprNrmArr = n.arr;
   }
 
+  var POST_VS = 'varying vec2 vUv; void main(){ vUv=uv; gl_Position=vec4(position.xy,0.0,1.0); }';
+  var BRIGHT_FS = [
+    'precision highp float; varying vec2 vUv; uniform sampler2D tSrc; uniform float uThresh;',
+    'void main(){ vec3 c=texture2D(tSrc,vUv).rgb; float l=dot(c,vec3(0.299,0.587,0.114));',
+    '  float k=smoothstep(uThresh,uThresh+0.35,l); gl_FragColor=vec4(c*k,1.0); }'
+  ].join('\n');
+  var BLUR_FS = [
+    'precision highp float; varying vec2 vUv; uniform sampler2D tSrc; uniform vec2 uDir;',
+    'void main(){ vec3 c=texture2D(tSrc,vUv).rgb*0.227;',
+    '  c+=texture2D(tSrc,vUv+uDir*1.3846).rgb*0.316;',
+    '  c+=texture2D(tSrc,vUv-uDir*1.3846).rgb*0.316;',
+    '  c+=texture2D(tSrc,vUv+uDir*3.2308).rgb*0.070;',
+    '  c+=texture2D(tSrc,vUv-uDir*3.2308).rgb*0.070;',
+    '  gl_FragColor=vec4(c,1.0); }'
+  ].join('\n');
+  var COMP_FS = [
+    'precision highp float; varying vec2 vUv; uniform sampler2D tScene,tBloom;',
+    'uniform float uBloom,uVig,uTime;',
+    'vec3 aces(vec3 x){ return clamp((x*(2.51*x+0.03))/(x*(2.43*x+0.59)+0.14),0.0,1.0); }',
+    'void main(){ vec3 c=texture2D(tScene,vUv).rgb + texture2D(tBloom,vUv).rgb*uBloom;',
+    '  c=aces(c*1.05);',
+    '  vec2 q=vUv-0.5; float v=1.0-dot(q,q)*uVig; c*=v;',
+    '  c+= (fract(sin(dot(vUv*uTime,vec2(12.9898,78.233)))*43758.5453)-0.5)*0.012;',
+    '  gl_FragColor=vec4(c,1.0); }'
+  ].join('\n');
+
+  function initPost() {
+    if (rtScene || !renderer) return;
+    var w = Math.max(2, Math.floor(G.width / 2)), h = Math.max(2, Math.floor(G.height / 2));
+    rtScene = new THREE.WebGLRenderTarget(G.width, G.height, { depthBuffer: true });
+    rtA = new THREE.WebGLRenderTarget(w, h, { depthBuffer: false });
+    rtB = new THREE.WebGLRenderTarget(w, h, { depthBuffer: false });
+    matBright = new THREE.ShaderMaterial({ vertexShader: POST_VS, fragmentShader: BRIGHT_FS,
+      uniforms: { tSrc: { value: null }, uThresh: { value: 0.45 } }, depthTest: false, depthWrite: false });
+    matBlur = new THREE.ShaderMaterial({ vertexShader: POST_VS, fragmentShader: BLUR_FS,
+      uniforms: { tSrc: { value: null }, uDir: { value: new THREE.Vector2() } }, depthTest: false, depthWrite: false });
+    matComp = new THREE.ShaderMaterial({ vertexShader: POST_VS, fragmentShader: COMP_FS,
+      uniforms: { tScene: { value: null }, tBloom: { value: null }, uBloom: { value: G.bloom }, uVig: { value: 0.55 }, uTime: { value: 1 } },
+      depthTest: false, depthWrite: false });
+    postQuad = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), matBright);
+    postQuad.frustumCulled = false;
+    postCam = new THREE.Camera();
+    G.postScene = new THREE.Scene();
+    G.postScene.add(postQuad);
+  }
+
+  function postPass(mat, target) {
+    postQuad.material = mat;
+    renderer.setRenderTarget(target || null);
+    renderer.render(G.postScene, postCam);
+  }
+
   G.resize = function (w, h, dpr) {
     G.width = w; G.height = h; G.dpr = dpr || 1;
     if (!renderer) return;
     renderer.setPixelRatio(G.dpr);
     renderer.setSize(w, h, false);
     if (camera) { camera.aspect = w / Math.max(1, h); camera.updateProjectionMatrix(); }
+    if (rtScene) {
+      rtScene.setSize(w, h);
+      rtA.setSize(Math.max(2, w >> 1), Math.max(2, h >> 1));
+      rtB.setSize(Math.max(2, w >> 1), Math.max(2, h >> 1));
+    }
   };
 
   G.gl = function () { return renderer ? renderer.getContext() : null; };
@@ -625,11 +685,31 @@ touch-action:none;user-select:none;-webkit-user-select:none;overscroll-behavior:
   G.end = function () {
     G.flushBatch();
     flushSprites();
-    if (renderer && scene && camera) renderer.render(scene, camera);
+    if (!renderer || !scene || !camera) return;
+    initPost();
+    if (!rtScene || G.scissorOn) { renderer.setRenderTarget(null); renderer.render(scene, camera); return; }
+    renderer.setRenderTarget(rtScene);
+    renderer.render(scene, camera);
+    matBright.uniforms.tSrc.value = rtScene.texture;
+    postPass(matBright, rtA);
+    for (var i = 0; i < 3; i++) {
+      matBlur.uniforms.tSrc.value = rtA.texture;
+      matBlur.uniforms.uDir.value.set(1 / rtA.width, 0);
+      postPass(matBlur, rtB);
+      matBlur.uniforms.tSrc.value = rtB.texture;
+      matBlur.uniforms.uDir.value.set(0, 1 / rtA.height);
+      postPass(matBlur, rtA);
+    }
+    matComp.uniforms.tScene.value = rtScene.texture;
+    matComp.uniforms.tBloom.value = rtA.texture;
+    matComp.uniforms.uBloom.value = G.bloom;
+    matComp.uniforms.uTime.value = G.time;
+    postPass(matComp, null);
   };
 
   G.scissor = function (x, y, w, h) {
     if (!renderer) return;
+    G.scissorOn = true;
     renderer.setScissorTest(true);
     renderer.setScissor(x, y, w, h);
     renderer.setViewport(x, y, w, h);
@@ -637,6 +717,7 @@ touch-action:none;user-select:none;-webkit-user-select:none;overscroll-behavior:
 
   G.noScissor = function () {
     if (!renderer) return;
+    G.scissorOn = false;
     renderer.setScissorTest(false);
     renderer.setViewport(0, 0, G.width, G.height);
   };
@@ -861,13 +942,13 @@ touch-action:none;user-select:none;-webkit-user-select:none;overscroll-behavior:
   // dark (noir/gris fixes : roues, pare-chocs,ails, métal)
   mesh.kartParts = function () {
     var B = builder(), A = builder(), D = builder();
-    var dark = [0.16, 0.16, 0.2], tire = [0.13, 0.13, 0.16], chrome = [0.78, 0.8, 0.86];
+    var dark = [0.16, 0.16, 0.2], tire = [0.13, 0.13, 0.16], chrome = [0.42, 0.45, 0.52];
     B.box(0, 0.34, 0, 1.16, 0.30, 1.72, [1, 1, 1]);          // châssis
     A.box(0, 0.24, -0.72, 0.86, 0.22, 0.62, [1, 1, 1]);       // nez
-    A.box(0, 0.62, 0.34, 0.78, 0.52, 0.42, [1, 1, 1]);        // dossier
+    A.box(0, 0.56, 0.36, 0.66, 0.36, 0.3, [1, 1, 1]);         // dossier
     D.box(0, 0.52, 0.16, 0.6, 0.12, 0.5, dark);               // assise
     D.torus(0, 0.72, -0.12, 0.17, 0.035, dark, 12, 6);        // volant
-    D.box(0, 0.86, 0.46, 0.9, 0.12, 0.16, chrome);            // arceau
+    D.box(0, 0.8, 0.48, 0.72, 0.08, 0.1, chrome);              // arceau
     D.box(-0.62, 0.34, 0.1, 0.12, 0.26, 1.1, dark);
     D.box(0.62, 0.34, 0.1, 0.12, 0.26, 1.1, dark);
     A.box(0, 0.44, 0.92, 1.2, 0.16, 0.18, [1, 1, 1]);         // pare-chocs arrière
@@ -1086,7 +1167,7 @@ touch-action:none;user-select:none;-webkit-user-select:none;overscroll-behavior:
     theme: {
       skyTop: [0.28, 0.5, 0.85], skyBottom: [0.95, 0.8, 0.6], fog: [0.88, 0.78, 0.62],
       ground: [0.8, 0.66, 0.42], groundAlt: [0.62, 0.49, 0.3], wall: [0.72, 0.42, 0.25],
-      accent: [1, 0.75, 0.2], sunDir: [0.45, 0.85, 0.3], ambient: 0.62, gridColor: [0.7, 0.55, 0.35]
+      accent: [1, 0.75, 0.2], sunDir: [0.45, 0.85, 0.3], ambient: 0.62, gridColor: [0.7, 0.55, 0.35], bloom: 0.3
     },
     build: function () {
       var W = 80, D = 80;
@@ -1146,10 +1227,10 @@ touch-action:none;user-select:none;-webkit-user-select:none;overscroll-behavior:
           { x: 0, z: 0, w: 4, d: 4, h: 3, kind: 'pillar', color: [0.3, 0.2, 0.6] }
         ],
         ramps: [
-          { x: -21.5, z: 0, w: 5, d: 7, h: 3, dir: '+x', color: [0.2, 0.35, 0.5] },
-          { x: 21.5, z: 0, w: 5, d: 7, h: 3, dir: '-x', color: [0.2, 0.35, 0.5] },
-          { x: 0, z: -21.5, w: 7, d: 5, h: 3, dir: '+z', color: [0.2, 0.35, 0.5] },
-          { x: 0, z: 21.5, w: 7, d: 5, h: 3, dir: '-z', color: [0.2, 0.35, 0.5] }
+          { x: -21.5, z: 0, w: 5, d: 7, h: 3, dir: '+x', color: [0.26, 0.45, 0.66] },
+          { x: 21.5, z: 0, w: 5, d: 7, h: 3, dir: '-x', color: [0.26, 0.45, 0.66] },
+          { x: 0, z: -21.5, w: 7, d: 5, h: 3, dir: '+z', color: [0.26, 0.45, 0.66] },
+          { x: 0, z: 21.5, w: 7, d: 5, h: 3, dir: '-z', color: [0.26, 0.45, 0.66] }
         ],
         platforms: [
           { x: -14, y: 3, z: 0, w: 8, d: 8, color: [0.16, 0.2, 0.34], pillar: true },
@@ -1178,7 +1259,7 @@ touch-action:none;user-select:none;-webkit-user-select:none;overscroll-behavior:
     theme: {
       skyTop: [0.55, 0.75, 0.95], skyBottom: [0.9, 0.97, 1], fog: [0.85, 0.93, 1],
       ground: [0.85, 0.93, 0.98], groundAlt: [0.78, 0.88, 0.96], wall: [0.5, 0.72, 0.9],
-      accent: [0.3, 0.8, 1], sunDir: [0.5, 0.7, 0.5], ambient: 0.7, gridColor: [0.6, 0.8, 0.95]
+      accent: [0.3, 0.8, 1], sunDir: [0.5, 0.7, 0.5], ambient: 0.7, gridColor: [0.6, 0.8, 0.95], bloom: 0.45
     },
     build: function () {
       var W = 76, D = 76;
@@ -1269,7 +1350,7 @@ touch-action:none;user-select:none;-webkit-user-select:none;overscroll-behavior:
   NB.maps = maps;
 })(window.NB = window.NB || {});
 
-/* ==== arena.js (324 lignes) ==== */
+/* ==== arena.js (350 lignes) ==== */
 // NITRO BRAWL — arène : géométrie GPU, collision AABB, raycast, minimap, navigation
 (function (NB) {
   'use strict';
@@ -1393,12 +1474,31 @@ touch-action:none;user-select:none;-webkit-user-select:none;overscroll-behavior:
         b.plane(cx, 0, cz, cell, cell, c);
       }
     }
+    if (th.neonGrid) {
+      var gg = over(th.gridColor || th.accent, 1.35);
+      for (var gx = -w / 2 + 8; gx < w / 2 - 4; gx += 8) b.box(gx, 0.045, 0, 0.35, 0.09, d - 6, gg);
+      for (var gz = -d / 2 + 8; gz < d / 2 - 4; gz += 8) b.box(0, 0.045, gz, w - 6, 0.09, 0.35, gg);
+    }
+    horizonGrid(b, th, w, d);
     // liseré néon autour de la piste
     var g = th.gridColor || th.accent;
-    b.box(0, 0.06, -d / 2 + 1.2, w - 4, 0.12, 0.35, g);
-    b.box(0, 0.06, d / 2 - 1.2, w - 4, 0.12, 0.35, g);
-    b.box(-w / 2 + 1.2, 0.06, 0, 0.35, 0.12, d - 4, g);
-    b.box(w / 2 - 1.2, 0.06, 0, 0.35, 0.12, d - 4, g);
+    b.box(0, 0.06, -d / 2 + 1.2, w - 4, 0.12, 0.35, over(g, glowK(th)));
+    b.box(0, 0.06, d / 2 - 1.2, w - 4, 0.12, 0.35, over(g, 1.5));
+    b.box(-w / 2 + 1.2, 0.06, 0, 0.35, 0.12, d - 4, over(g, 1.5));
+    b.box(w / 2 - 1.2, 0.06, 0, 0.35, 0.12, d - 4, over(g, 1.5));
+  }
+
+  // plan infini quadrillé sous l'arène : horizon synthwave, cache le vide
+  function horizonGrid(b, th, w, d) {
+    var dark = th.void || [0.05, 0.04, 0.09];
+    b.plane(0, -0.7, 0, 700, 700, dark);
+    var gg = over(th.gridColor || th.accent, 0.9);
+    for (var i = -8; i <= 8; i++) {
+      if (Math.abs(i) < 1) continue;
+      var o = i * 40;
+      b.box(o, -0.62, 0, 0.5, 0.08, 640, gg);
+      b.box(0, -0.62, o, 640, 0.08, 0.5, gg);
+    }
   }
 
   function buildStructures(b, L, th) {
@@ -1406,31 +1506,38 @@ touch-action:none;user-select:none;-webkit-user-select:none;overscroll-behavior:
     for (i = 0; i < L.walls.length; i++) {
       var w = L.walls[i];
       b.box(w.x, w.h / 2, w.z, w.w, w.h, w.d, w.color || th.wall);
-      b.box(w.x, w.h + 0.08, w.z, w.w * 0.98, 0.16, w.d * 0.98, th.accent);
+      b.box(w.x, w.h + 0.08, w.z, w.w * 0.98, 0.16, w.d * 0.98, over(th.accent, glowK(th)));
     }
     for (i = 0; i < L.obstacles.length; i++) {
       var o = L.obstacles[i];
       if (o.kind === 'barrel') b.addMesh(NB.mesh.barrel(o.w / 2, o.h, o.color), [o.x, 0, o.z]);
       else if (o.kind === 'pillar') {
         b.box(o.x, o.h / 2, o.z, o.w, o.h, o.d, o.color);
-        b.box(o.x, o.h + 0.1, o.z, o.w * 1.15, 0.2, o.d * 1.15, th.accent);
+        b.box(o.x, o.h + 0.1, o.z, o.w * 1.15, 0.2, o.d * 1.15, over(th.accent, glowK(th)));
       } else if (o.kind === 'crate') b.addMesh(NB.mesh.crate(Math.min(o.w, o.h), o.color), [o.x, 0, o.z]);
       else b.box(o.x, o.h / 2, o.z, o.w, o.h, o.d, o.color);
     }
     for (i = 0; i < L.ramps.length; i++) {
       var r = L.ramps[i];
       b.ramp(r.x, 0, r.z, r.w, r.h, r.d, r.color, r.dir);
-      b.box(r.x, 0.05, r.z, r.w * 0.9, 0.1, r.d * 0.9, th.accent);
+      b.box(r.x, 0.05, r.z, r.w * 0.9, 0.1, r.d * 0.9, over(th.accent, 1.6));
     }
     for (i = 0; i < L.platforms.length; i++) {
       var p = L.platforms[i];
       b.box(p.x, p.y - 0.25, p.z, p.w, 0.5, p.d, p.color);
-      if (p.pillar) b.box(p.x, (p.y - 0.5) / 2, p.z, p.w * 0.78, p.y - 0.5, p.d * 0.78, shade(p.color, 0.7));
-      b.box(p.x, p.y + 0.06, p.z, p.w * 0.96, 0.12, p.d * 0.96, th.accent);
+      if (p.pillar) {
+        b.box(p.x, (p.y - 0.5) / 2, p.z, p.w * 0.78, p.y - 0.5, p.d * 0.78, shade(p.color, 0.7));
+        b.box(p.x, p.y * 0.5, p.z, p.w * 0.82, 0.14, p.d * 0.82, over(th.accent, glowK(th)));
+      }
+      b.box(p.x, p.y + 0.06, p.z, p.w * 0.96, 0.12, p.d * 0.96, over(th.accent, 1.6));
     }
   }
 
   function shade(c, k) { return [c[0] * k, c[1] * k, c[2] * k]; }
+
+  function over(c, k) { return [c[0] * k, c[1] * k, c[2] * k]; }
+
+  function glowK(th) { return th.neonGrid ? 1.7 : 1.0; }
 
   function buildDecor(b, L, th) {
     for (var i = 0; i < L.decorations.length; i++) {
@@ -1594,7 +1701,7 @@ touch-action:none;user-select:none;-webkit-user-select:none;overscroll-behavior:
   NB.arena = arena;
 })(window.NB = window.NB || {});
 
-/* ==== kart.js (306 lignes) ==== */
+/* ==== kart.js (307 lignes) ==== */
 // NITRO BRAWL — physique arcade du kart : adhérence, drift, rampes, sauts, collisions
 (function (NB) {
   'use strict';
@@ -1893,6 +2000,7 @@ touch-action:none;user-select:none;-webkit-user-select:none;overscroll-behavior:
     NB.gl.draw(m.dark, mm);
     if (NB.fx) {
       NB.fx.shadow(k.pos[0], k.pos[2], 1.15, k.onGround ? 0.34 : 0.16);
+      if (k.onGround) NB.fx.underglow(k.pos[0], k.pos[2], k.yaw, k.color);
       if (k.shieldT > 0) NB.fx.shieldBubble(k.pos, k.shieldT);
       if (k.ramT > 0) NB.fx.ramGlow(k.pos, k.yaw);
     }
@@ -2538,7 +2646,7 @@ touch-action:none;user-select:none;-webkit-user-select:none;overscroll-behavior:
   NB.bots = B;
 })(window.NB = window.NB || {});
 
-/* ==== fx.js (275 lignes) ==== */
+/* ==== fx.js (299 lignes) ==== */
 // NITRO BRAWL — effets : pool de particules, traces, ondes, screen shake, textes 3D
 (function (NB) {
   'use strict';
@@ -2696,6 +2804,7 @@ touch-action:none;user-select:none;-webkit-user-select:none;overscroll-behavior:
 
   F.draw = function () {
     if (!NB.gl || !NB.gl.gl || !NB.gl.gl()) return;
+    drawGlows();
     drawShadows();
     drawSkids();
     drawRings();
@@ -2764,6 +2873,29 @@ touch-action:none;user-select:none;-webkit-user-select:none;overscroll-behavior:
         [b.c[0] * a, b.c[1] * a, b.c[2] * a]);
     }
     NB.gl.flushBatch();
+  }
+
+  var glows = [];
+  F.underglow = function (x, z, yaw, color) {
+    if (glows.length < 32) glows.push([x, z, yaw, color]);
+  };
+
+  function drawGlows() {
+    if (!glows.length) return;
+    NB.gl.beginBatch();
+    for (var i = 0; i < glows.length; i++) {
+      var g = glows[i];
+      var c = [g[3][0] * 1.9, g[3][1] * 1.9, g[3][2] * 1.9];
+      var f = [-Math.sin(g[2]), -Math.cos(g[2])], r = [Math.cos(g[2]), -Math.sin(g[2])];
+      var hw = 0.78, hl = 1.2, y = 0.07;
+      NB.gl.batchQuad(
+        [g[0] - f[0] * hl - r[0] * hw, y, g[1] - f[1] * hl - r[1] * hw],
+        [g[0] - f[0] * hl + r[0] * hw, y, g[1] - f[1] * hl + r[1] * hw],
+        [g[0] + f[0] * hl + r[0] * hw, y, g[1] + f[1] * hl + r[1] * hw],
+        [g[0] + f[0] * hl - r[0] * hw, y, g[1] + f[1] * hl - r[1] * hw], c);
+    }
+    NB.gl.flushBatch();
+    glows.length = 0;
   }
 
   F.shieldBubble = function (pos, t) {
@@ -3754,7 +3886,7 @@ touch-action:none;user-select:none;-webkit-user-select:none;overscroll-behavior:
   NB.input = I;
 })(window.NB = window.NB || {});
 
-/* ==== camera.js (63 lignes) ==== */
+/* ==== camera.js (64 lignes) ==== */
 // NITRO BRAWL — caméra : chase cam lissée + orbite de démonstration
 (function (NB) {
   'use strict';
@@ -3782,6 +3914,7 @@ touch-action:none;user-select:none;-webkit-user-select:none;overscroll-behavior:
     if (th) {
       cam.skyTop = th.skyTop; cam.skyBottom = th.skyBottom; cam.fogColor = th.fog;
       cam.sunDir = th.sunDir; cam.ambient = th.ambient == null ? 0.58 : th.ambient;
+      if (NB.gl) NB.gl.bloom = th.bloom == null ? 0.8 : th.bloom;
     }
     if (!g.player || g.phase === 'menu' || g.phase === 'finished') orbit(g, dt);
     else chase(g, g.player, dt);
@@ -3818,7 +3951,7 @@ touch-action:none;user-select:none;-webkit-user-select:none;overscroll-behavior:
   NB.cam = C;
 })(window.NB = window.NB || {});
 
-/* ==== qa.js (181 lignes) ==== */
+/* ==== qa.js (223 lignes) ==== */
 // NITRO BRAWL — harnais QA visuel : scènes figées en panneaux pour inspection des défauts.
 // URL : ?qa=kart|arena0..3|fx|pickups   (rendu statique, déterministe)
 (function (NB) {
@@ -3927,6 +4060,48 @@ touch-action:none;user-select:none;-webkit-user-select:none;overscroll-behavior:
     }
   }
 
+  // export PNG fait par le jeu lui-même (readPixels -> PNG via canvas 2D)
+  Q.png = function () {
+    var gl = NB.gl.gl();
+    var w = gl.drawingBufferWidth, h = gl.drawingBufferHeight;
+    var px = new Uint8Array(w * h * 4);
+    gl.readPixels(0, 0, w, h, gl.RGBA, gl.UNSIGNED_BYTE, px);
+    var cv = document.createElement('canvas');
+    cv.width = w; cv.height = h;
+    var cx = cv.getContext('2d');
+    var img = cx.createImageData(w, h);
+    for (var y = 0; y < h; y++) {
+      var src = (h - 1 - y) * w * 4, dst = y * w * 4;
+      img.data.set(px.subarray(src, src + w * 4), dst);
+    }
+    cx.putImageData(img, 0, 0);
+    return cv.toDataURL('image/png');
+  };
+
+  Q.probe = function (fx, fy) {
+    var gl = NB.gl.gl();
+    if (!gl) return 'nogl';
+    var px = new Uint8Array(4);
+    gl.readPixels(fx | 0, fy | 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, px);
+    return px[0] + ',' + px[1] + ',' + px[2];
+  };
+
+  Q.tick = function () {
+    if (Q.done) return;
+    if (/[?&]probe=1/.test(location.search)) {
+      Q.done = true;
+      var W = NB.gl.width, H = NB.gl.height;
+      document.title = 'PROBE under=' + Q.probe(W / 2, H * 0.28) +
+        ' floor=' + Q.probe(W / 2, H * 0.12) + ' sky=' + Q.probe(W / 2, H * 0.9);
+    } else if (/[?&]png=1/.test(location.search)) {
+      Q.done = true;
+      var pre = document.createElement('pre');
+      pre.id = 'qapng';
+      pre.textContent = Q.png();
+      document.body.appendChild(pre);
+    }
+  };
+
   Q.draw = function (name) {
     if (name === 'kart') {
       panels([
@@ -4000,7 +4175,7 @@ touch-action:none;user-select:none;-webkit-user-select:none;overscroll-behavior:
   NB.qa = Q;
 })(window.NB = window.NB || {});
 
-/* ==== main.js (491 lignes) ==== */
+/* ==== main.js (494 lignes) ==== */
 // NITRO BRAWL — boucle de jeu, caméra, règles de match, bootstrap
 (function (NB) {
   'use strict';
@@ -4201,13 +4376,16 @@ touch-action:none;user-select:none;-webkit-user-select:none;overscroll-behavior:
     g.time += dt;
     g.fps = g.fps ? g.fps * 0.9 + (1 / dt) * 0.1 : 60;
     try {
-      if (G.qaMode) NB.qa.draw(G.qaMode);
-      else { update(dt); draw(); }
+      if (G.qaMode) {
+        NB.qa.draw(G.qaMode);
+        NB.qa.tick();
+      } else { update(dt); draw(); }
     } catch (e) {
       cancelAnimationFrame(raf);
       NB.util.dbg('fatal frame error', e && e.stack || e);
       throw e;
     }
+    if (G.frozen && NB.qa) NB.qa.tick();
     NB.input.endFrame();
   }
 

@@ -198,13 +198,16 @@
     g.time += dt;
     g.fps = g.fps ? g.fps * 0.9 + (1 / dt) * 0.1 : 60;
     try {
-      if (G.qaMode) NB.qa.draw(G.qaMode);
-      else { update(dt); draw(); }
+      if (G.qaMode) {
+        NB.qa.draw(G.qaMode);
+        NB.qa.tick();
+      } else { update(dt); draw(); }
     } catch (e) {
       cancelAnimationFrame(raf);
       NB.util.dbg('fatal frame error', e && e.stack || e);
       throw e;
     }
+    if (G.frozen && NB.qa) NB.qa.tick();
     NB.input.endFrame();
   }
 

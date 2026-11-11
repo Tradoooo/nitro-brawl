@@ -32,7 +32,7 @@
     theme: {
       skyTop: [0.28, 0.5, 0.85], skyBottom: [0.95, 0.8, 0.6], fog: [0.88, 0.78, 0.62],
       ground: [0.8, 0.66, 0.42], groundAlt: [0.62, 0.49, 0.3], wall: [0.72, 0.42, 0.25],
-      accent: [1, 0.75, 0.2], sunDir: [0.45, 0.85, 0.3], ambient: 0.62, gridColor: [0.7, 0.55, 0.35]
+      accent: [1, 0.75, 0.2], sunDir: [0.45, 0.85, 0.3], ambient: 0.62, gridColor: [0.7, 0.55, 0.35], bloom: 0.3
     },
     build: function () {
       var W = 80, D = 80;
@@ -92,10 +92,10 @@
           { x: 0, z: 0, w: 4, d: 4, h: 3, kind: 'pillar', color: [0.3, 0.2, 0.6] }
         ],
         ramps: [
-          { x: -21.5, z: 0, w: 5, d: 7, h: 3, dir: '+x', color: [0.2, 0.35, 0.5] },
-          { x: 21.5, z: 0, w: 5, d: 7, h: 3, dir: '-x', color: [0.2, 0.35, 0.5] },
-          { x: 0, z: -21.5, w: 7, d: 5, h: 3, dir: '+z', color: [0.2, 0.35, 0.5] },
-          { x: 0, z: 21.5, w: 7, d: 5, h: 3, dir: '-z', color: [0.2, 0.35, 0.5] }
+          { x: -21.5, z: 0, w: 5, d: 7, h: 3, dir: '+x', color: [0.26, 0.45, 0.66] },
+          { x: 21.5, z: 0, w: 5, d: 7, h: 3, dir: '-x', color: [0.26, 0.45, 0.66] },
+          { x: 0, z: -21.5, w: 7, d: 5, h: 3, dir: '+z', color: [0.26, 0.45, 0.66] },
+          { x: 0, z: 21.5, w: 7, d: 5, h: 3, dir: '-z', color: [0.26, 0.45, 0.66] }
         ],
         platforms: [
           { x: -14, y: 3, z: 0, w: 8, d: 8, color: [0.16, 0.2, 0.34], pillar: true },
@@ -124,7 +124,7 @@
     theme: {
       skyTop: [0.55, 0.75, 0.95], skyBottom: [0.9, 0.97, 1], fog: [0.85, 0.93, 1],
       ground: [0.85, 0.93, 0.98], groundAlt: [0.78, 0.88, 0.96], wall: [0.5, 0.72, 0.9],
-      accent: [0.3, 0.8, 1], sunDir: [0.5, 0.7, 0.5], ambient: 0.7, gridColor: [0.6, 0.8, 0.95]
+      accent: [0.3, 0.8, 1], sunDir: [0.5, 0.7, 0.5], ambient: 0.7, gridColor: [0.6, 0.8, 0.95], bloom: 0.45
     },
     build: function () {
       var W = 76, D = 76;

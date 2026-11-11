@@ -121,12 +121,31 @@
         b.plane(cx, 0, cz, cell, cell, c);
       }
     }
+    if (th.neonGrid) {
+      var gg = over(th.gridColor || th.accent, 1.35);
+      for (var gx = -w / 2 + 8; gx < w / 2 - 4; gx += 8) b.box(gx, 0.045, 0, 0.35, 0.09, d - 6, gg);
+      for (var gz = -d / 2 + 8; gz < d / 2 - 4; gz += 8) b.box(0, 0.045, gz, w - 6, 0.09, 0.35, gg);
+    }
+    horizonGrid(b, th, w, d);
     // liseré néon autour de la piste
     var g = th.gridColor || th.accent;
-    b.box(0, 0.06, -d / 2 + 1.2, w - 4, 0.12, 0.35, g);
-    b.box(0, 0.06, d / 2 - 1.2, w - 4, 0.12, 0.35, g);
-    b.box(-w / 2 + 1.2, 0.06, 0, 0.35, 0.12, d - 4, g);
-    b.box(w / 2 - 1.2, 0.06, 0, 0.35, 0.12, d - 4, g);
+    b.box(0, 0.06, -d / 2 + 1.2, w - 4, 0.12, 0.35, over(g, glowK(th)));
+    b.box(0, 0.06, d / 2 - 1.2, w - 4, 0.12, 0.35, over(g, 1.5));
+    b.box(-w / 2 + 1.2, 0.06, 0, 0.35, 0.12, d - 4, over(g, 1.5));
+    b.box(w / 2 - 1.2, 0.06, 0, 0.35, 0.12, d - 4, over(g, 1.5));
+  }
+
+  // plan infini quadrillé sous l'arène : horizon synthwave, cache le vide
+  function horizonGrid(b, th, w, d) {
+    var dark = th.void || [0.05, 0.04, 0.09];
+    b.plane(0, -0.7, 0, 700, 700, dark);
+    var gg = over(th.gridColor || th.accent, 0.9);
+    for (var i = -8; i <= 8; i++) {
+      if (Math.abs(i) < 1) continue;
+      var o = i * 40;
+      b.box(o, -0.62, 0, 0.5, 0.08, 640, gg);
+      b.box(0, -0.62, o, 640, 0.08, 0.5, gg);
+    }
   }
 
   function buildStructures(b, L, th) {
@@ -134,31 +153,38 @@
     for (i = 0; i < L.walls.length; i++) {
       var w = L.walls[i];
       b.box(w.x, w.h / 2, w.z, w.w, w.h, w.d, w.color || th.wall);
-      b.box(w.x, w.h + 0.08, w.z, w.w * 0.98, 0.16, w.d * 0.98, th.accent);
+      b.box(w.x, w.h + 0.08, w.z, w.w * 0.98, 0.16, w.d * 0.98, over(th.accent, glowK(th)));
     }
     for (i = 0; i < L.obstacles.length; i++) {
       var o = L.obstacles[i];
       if (o.kind === 'barrel') b.addMesh(NB.mesh.barrel(o.w / 2, o.h, o.color), [o.x, 0, o.z]);
       else if (o.kind === 'pillar') {
         b.box(o.x, o.h / 2, o.z, o.w, o.h, o.d, o.color);
-        b.box(o.x, o.h + 0.1, o.z, o.w * 1.15, 0.2, o.d * 1.15, th.accent);
+        b.box(o.x, o.h + 0.1, o.z, o.w * 1.15, 0.2, o.d * 1.15, over(th.accent, glowK(th)));
       } else if (o.kind === 'crate') b.addMesh(NB.mesh.crate(Math.min(o.w, o.h), o.color), [o.x, 0, o.z]);
       else b.box(o.x, o.h / 2, o.z, o.w, o.h, o.d, o.color);
     }
     for (i = 0; i < L.ramps.length; i++) {
       var r = L.ramps[i];
       b.ramp(r.x, 0, r.z, r.w, r.h, r.d, r.color, r.dir);
-      b.box(r.x, 0.05, r.z, r.w * 0.9, 0.1, r.d * 0.9, th.accent);
+      b.box(r.x, 0.05, r.z, r.w * 0.9, 0.1, r.d * 0.9, over(th.accent, 1.6));
     }
     for (i = 0; i < L.platforms.length; i++) {
       var p = L.platforms[i];
       b.box(p.x, p.y - 0.25, p.z, p.w, 0.5, p.d, p.color);
-      if (p.pillar) b.box(p.x, (p.y - 0.5) / 2, p.z, p.w * 0.78, p.y - 0.5, p.d * 0.78, shade(p.color, 0.7));
-      b.box(p.x, p.y + 0.06, p.z, p.w * 0.96, 0.12, p.d * 0.96, th.accent);
+      if (p.pillar) {
+        b.box(p.x, (p.y - 0.5) / 2, p.z, p.w * 0.78, p.y - 0.5, p.d * 0.78, shade(p.color, 0.7));
+        b.box(p.x, p.y * 0.5, p.z, p.w * 0.82, 0.14, p.d * 0.82, over(th.accent, glowK(th)));
+      }
+      b.box(p.x, p.y + 0.06, p.z, p.w * 0.96, 0.12, p.d * 0.96, over(th.accent, 1.6));
     }
   }
 
   function shade(c, k) { return [c[0] * k, c[1] * k, c[2] * k]; }
+
+  function over(c, k) { return [c[0] * k, c[1] * k, c[2] * k]; }
+
+  function glowK(th) { return th.neonGrid ? 1.7 : 1.0; }
 
   function buildDecor(b, L, th) {
     for (var i = 0; i < L.decorations.length; i++) {

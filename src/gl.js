@@ -15,6 +15,9 @@
   var IDENTITY = null;
   var camRight = [1, 0, 0], camUp = [0, 1, 0];
   var lastFov = -1, lastTheme = '', lastAspect = -1;
+  var rtScene = null, rtA = null, rtB = null, postQuad = null, postCam = null;
+  var matBright = null, matBlur = null, matComp = null;
+  G.bloom = 1.6;
 
   // uniforms partagés par tous les matériaux opaques
   var U = {
@@ -125,7 +128,7 @@
     sun = new THREE.Sprite(new THREE.SpriteMaterial({
       map: tex, blending: THREE.AdditiveBlending, depthWrite: false, transparent: true, fog: false
     }));
-    sun.scale.set(240, 240, 1);
+    sun.scale.set(110, 110, 1);
     scene.add(sun);
   }
 
@@ -171,12 +174,69 @@
     sprNrm = n.mesh; sprNrmGeo = n.geo; sprNrmArr = n.arr;
   }
 
+  var POST_VS = 'varying vec2 vUv; void main(){ vUv=uv; gl_Position=vec4(position.xy,0.0,1.0); }';
+  var BRIGHT_FS = [
+    'precision highp float; varying vec2 vUv; uniform sampler2D tSrc; uniform float uThresh;',
+    'void main(){ vec3 c=texture2D(tSrc,vUv).rgb; float l=dot(c,vec3(0.299,0.587,0.114));',
+    '  float k=smoothstep(uThresh,uThresh+0.35,l); gl_FragColor=vec4(c*k,1.0); }'
+  ].join('\n');
+  var BLUR_FS = [
+    'precision highp float; varying vec2 vUv; uniform sampler2D tSrc; uniform vec2 uDir;',
+    'void main(){ vec3 c=texture2D(tSrc,vUv).rgb*0.227;',
+    '  c+=texture2D(tSrc,vUv+uDir*1.3846).rgb*0.316;',
+    '  c+=texture2D(tSrc,vUv-uDir*1.3846).rgb*0.316;',
+    '  c+=texture2D(tSrc,vUv+uDir*3.2308).rgb*0.070;',
+    '  c+=texture2D(tSrc,vUv-uDir*3.2308).rgb*0.070;',
+    '  gl_FragColor=vec4(c,1.0); }'
+  ].join('\n');
+  var COMP_FS = [
+    'precision highp float; varying vec2 vUv; uniform sampler2D tScene,tBloom;',
+    'uniform float uBloom,uVig,uTime;',
+    'vec3 aces(vec3 x){ return clamp((x*(2.51*x+0.03))/(x*(2.43*x+0.59)+0.14),0.0,1.0); }',
+    'void main(){ vec3 c=texture2D(tScene,vUv).rgb + texture2D(tBloom,vUv).rgb*uBloom;',
+    '  c=aces(c*1.05);',
+    '  vec2 q=vUv-0.5; float v=1.0-dot(q,q)*uVig; c*=v;',
+    '  c+= (fract(sin(dot(vUv*uTime,vec2(12.9898,78.233)))*43758.5453)-0.5)*0.012;',
+    '  gl_FragColor=vec4(c,1.0); }'
+  ].join('\n');
+
+  function initPost() {
+    if (rtScene || !renderer) return;
+    var w = Math.max(2, Math.floor(G.width / 2)), h = Math.max(2, Math.floor(G.height / 2));
+    rtScene = new THREE.WebGLRenderTarget(G.width, G.height, { depthBuffer: true });
+    rtA = new THREE.WebGLRenderTarget(w, h, { depthBuffer: false });
+    rtB = new THREE.WebGLRenderTarget(w, h, { depthBuffer: false });
+    matBright = new THREE.ShaderMaterial({ vertexShader: POST_VS, fragmentShader: BRIGHT_FS,
+      uniforms: { tSrc: { value: null }, uThresh: { value: 0.45 } }, depthTest: false, depthWrite: false });
+    matBlur = new THREE.ShaderMaterial({ vertexShader: POST_VS, fragmentShader: BLUR_FS,
+      uniforms: { tSrc: { value: null }, uDir: { value: new THREE.Vector2() } }, depthTest: false, depthWrite: false });
+    matComp = new THREE.ShaderMaterial({ vertexShader: POST_VS, fragmentShader: COMP_FS,
+      uniforms: { tScene: { value: null }, tBloom: { value: null }, uBloom: { value: G.bloom }, uVig: { value: 0.55 }, uTime: { value: 1 } },
+      depthTest: false, depthWrite: false });
+    postQuad = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), matBright);
+    postQuad.frustumCulled = false;
+    postCam = new THREE.Camera();
+    G.postScene = new THREE.Scene();
+    G.postScene.add(postQuad);
+  }
+
+  function postPass(mat, target) {
+    postQuad.material = mat;
+    renderer.setRenderTarget(target || null);
+    renderer.render(G.postScene, postCam);
+  }
+
   G.resize = function (w, h, dpr) {
     G.width = w; G.height = h; G.dpr = dpr || 1;
     if (!renderer) return;
     renderer.setPixelRatio(G.dpr);
     renderer.setSize(w, h, false);
     if (camera) { camera.aspect = w / Math.max(1, h); camera.updateProjectionMatrix(); }
+    if (rtScene) {
+      rtScene.setSize(w, h);
+      rtA.setSize(Math.max(2, w >> 1), Math.max(2, h >> 1));
+      rtB.setSize(Math.max(2, w >> 1), Math.max(2, h >> 1));
+    }
   };
 
   G.gl = function () { return renderer ? renderer.getContext() : null; };
@@ -387,11 +447,31 @@
   G.end = function () {
     G.flushBatch();
     flushSprites();
-    if (renderer && scene && camera) renderer.render(scene, camera);
+    if (!renderer || !scene || !camera) return;
+    initPost();
+    if (!rtScene || G.scissorOn) { renderer.setRenderTarget(null); renderer.render(scene, camera); return; }
+    renderer.setRenderTarget(rtScene);
+    renderer.render(scene, camera);
+    matBright.uniforms.tSrc.value = rtScene.texture;
+    postPass(matBright, rtA);
+    for (var i = 0; i < 3; i++) {
+      matBlur.uniforms.tSrc.value = rtA.texture;
+      matBlur.uniforms.uDir.value.set(1 / rtA.width, 0);
+      postPass(matBlur, rtB);
+      matBlur.uniforms.tSrc.value = rtB.texture;
+      matBlur.uniforms.uDir.value.set(0, 1 / rtA.height);
+      postPass(matBlur, rtA);
+    }
+    matComp.uniforms.tScene.value = rtScene.texture;
+    matComp.uniforms.tBloom.value = rtA.texture;
+    matComp.uniforms.uBloom.value = G.bloom;
+    matComp.uniforms.uTime.value = G.time;
+    postPass(matComp, null);
   };
 
   G.scissor = function (x, y, w, h) {
     if (!renderer) return;
+    G.scissorOn = true;
     renderer.setScissorTest(true);
     renderer.setScissor(x, y, w, h);
     renderer.setViewport(x, y, w, h);
@@ -399,6 +479,7 @@
 
   G.noScissor = function () {
     if (!renderer) return;
+    G.scissorOn = false;
     renderer.setScissorTest(false);
     renderer.setViewport(0, 0, G.width, G.height);
   };

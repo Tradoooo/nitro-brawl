@@ -205,13 +205,13 @@
   // dark (noir/gris fixes : roues, pare-chocs,ails, métal)
   mesh.kartParts = function () {
     var B = builder(), A = builder(), D = builder();
-    var dark = [0.16, 0.16, 0.2], tire = [0.13, 0.13, 0.16], chrome = [0.78, 0.8, 0.86];
+    var dark = [0.16, 0.16, 0.2], tire = [0.13, 0.13, 0.16], chrome = [0.42, 0.45, 0.52];
     B.box(0, 0.34, 0, 1.16, 0.30, 1.72, [1, 1, 1]);          // châssis
     A.box(0, 0.24, -0.72, 0.86, 0.22, 0.62, [1, 1, 1]);       // nez
-    A.box(0, 0.62, 0.34, 0.78, 0.52, 0.42, [1, 1, 1]);        // dossier
+    A.box(0, 0.56, 0.36, 0.66, 0.36, 0.3, [1, 1, 1]);         // dossier
     D.box(0, 0.52, 0.16, 0.6, 0.12, 0.5, dark);               // assise
     D.torus(0, 0.72, -0.12, 0.17, 0.035, dark, 12, 6);        // volant
-    D.box(0, 0.86, 0.46, 0.9, 0.12, 0.16, chrome);            // arceau
+    D.box(0, 0.8, 0.48, 0.72, 0.08, 0.1, chrome);              // arceau
     D.box(-0.62, 0.34, 0.1, 0.12, 0.26, 1.1, dark);
     D.box(0.62, 0.34, 0.1, 0.12, 0.26, 1.1, dark);
     A.box(0, 0.44, 0.92, 1.2, 0.16, 0.18, [1, 1, 1]);         // pare-chocs arrière
