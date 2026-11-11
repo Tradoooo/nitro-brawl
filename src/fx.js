@@ -236,8 +236,13 @@
     NB.gl.sprite(pos[0] + f[0] * 1.1, pos[1] + 0.5, pos[2] + f[2] * 1.1, 1.4, [1, 0.4, 0.2], 0.5, true);
   };
 
+  F.flash = function (pos, size, col) {
+    spawn(pos[0], pos[1] + 0.4, pos[2], 0, 0.5, 0, size, size * 3, 0, col, 0.16, true);
+  };
+
   F.onEvent = function (e) {
     if (e.t === 'boom') {
+      F.flash(e.pos, (e.r || 3) * 1.5, e.color || [1, 0.75, 0.35]);
       var i;
       for (i = 0; i < 10; i++) F.fire(e.pos, M.randRange(0.6, 1.4), M.randRange(0.3, 0.6));
       for (i = 0; i < 8; i++) F.smoke(e.pos, [M.randRange(-3, 3), 2, M.randRange(-3, 3)], M.randRange(0.8, 1.6), [0.4, 0.4, 0.45], 1.1);

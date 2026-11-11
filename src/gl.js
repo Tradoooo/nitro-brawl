@@ -119,6 +119,7 @@
     var m = new THREE.Mesh(geo, mat);
     m.frustumCulled = false;
     m.visible = false;
+    m.renderOrder = additive ? 12 : 10;   // la fumée (alpha) toujours sous le feu (additif)
     scene.add(m);
     return { mesh: m, geo: geo, arr: arr, n: 0 };
   }
@@ -364,6 +365,20 @@
     G.flushBatch();
     flushSprites();
     if (renderer && scene && camera) renderer.render(scene, camera);
+  };
+
+  // panneaux scindés (QA) : restreint clear + rendu à une région
+  G.scissor = function (x, y, w, h) {
+    if (!renderer) return;
+    renderer.setScissorTest(true);
+    renderer.setScissor(x, y, w, h);
+    renderer.setViewport(x, y, w, h);
+  };
+
+  G.noScissor = function () {
+    if (!renderer) return;
+    renderer.setScissorTest(false);
+    renderer.setViewport(0, 0, G.width, G.height);
   };
 
   G.project = function (out2, worldPos) {

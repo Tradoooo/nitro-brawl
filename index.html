@@ -235,7 +235,7 @@ touch-action:none;user-select:none;-webkit-user-select:none;overscroll-behavior:
   NB.M = M;
 })(window.NB = window.NB || {});
 
-/* ==== gl.js (380 lignes) ==== */
+/* ==== gl.js (395 lignes) ==== */
 // NITRO BRAWL — couche de rendu : adaptateur Three.js (API identique à l'ancien moteur maison)
 // Fournit : init/resize/createMesh/draw/drawTinted/batch*/sprite*/begin/end/project/stats.
 (function (NB) {
@@ -357,6 +357,7 @@ touch-action:none;user-select:none;-webkit-user-select:none;overscroll-behavior:
     var m = new THREE.Mesh(geo, mat);
     m.frustumCulled = false;
     m.visible = false;
+    m.renderOrder = additive ? 12 : 10;   // la fumée (alpha) toujours sous le feu (additif)
     scene.add(m);
     return { mesh: m, geo: geo, arr: arr, n: 0 };
   }
@@ -602,6 +603,20 @@ touch-action:none;user-select:none;-webkit-user-select:none;overscroll-behavior:
     G.flushBatch();
     flushSprites();
     if (renderer && scene && camera) renderer.render(scene, camera);
+  };
+
+  // panneaux scindés (QA) : restreint clear + rendu à une région
+  G.scissor = function (x, y, w, h) {
+    if (!renderer) return;
+    renderer.setScissorTest(true);
+    renderer.setScissor(x, y, w, h);
+    renderer.setViewport(x, y, w, h);
+  };
+
+  G.noScissor = function () {
+    if (!renderer) return;
+    renderer.setScissorTest(false);
+    renderer.setViewport(0, 0, G.width, G.height);
   };
 
   G.project = function (out2, worldPos) {
@@ -2501,7 +2516,7 @@ touch-action:none;user-select:none;-webkit-user-select:none;overscroll-behavior:
   NB.bots = B;
 })(window.NB = window.NB || {});
 
-/* ==== fx.js (270 lignes) ==== */
+/* ==== fx.js (275 lignes) ==== */
 // NITRO BRAWL — effets : pool de particules, traces, ondes, screen shake, textes 3D
 (function (NB) {
   'use strict';
@@ -2740,8 +2755,13 @@ touch-action:none;user-select:none;-webkit-user-select:none;overscroll-behavior:
     NB.gl.sprite(pos[0] + f[0] * 1.1, pos[1] + 0.5, pos[2] + f[2] * 1.1, 1.4, [1, 0.4, 0.2], 0.5, true);
   };
 
+  F.flash = function (pos, size, col) {
+    spawn(pos[0], pos[1] + 0.4, pos[2], 0, 0.5, 0, size, size * 3, 0, col, 0.16, true);
+  };
+
   F.onEvent = function (e) {
     if (e.t === 'boom') {
+      F.flash(e.pos, (e.r || 3) * 1.5, e.color || [1, 0.75, 0.35]);
       var i;
       for (i = 0; i < 10; i++) F.fire(e.pos, M.randRange(0.6, 1.4), M.randRange(0.3, 0.6));
       for (i = 0; i < 8; i++) F.smoke(e.pos, [M.randRange(-3, 3), 2, M.randRange(-3, 3)], M.randRange(0.8, 1.6), [0.4, 0.4, 0.45], 1.1);
@@ -3119,28 +3139,28 @@ touch-action:none;user-select:none;-webkit-user-select:none;overscroll-behavior:
     s.id = 'nb-css';
     s.textContent = [
       '#ui{font-family:ui-sans-serif,system-ui,sans-serif;color:#eaf2ff}',
-      '.nb-screen{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;',
+      '.nb-screen{position:absolute;inset:0;display:flex;align-items:flex-start;justify-content:center;padding:26px 0 44px;',
       'background:radial-gradient(1200px 700px at 50% 20%,rgba(30,20,70,.55),rgba(6,8,18,.82));',
       'animation:nbPop .22s ease-out;overflow:auto}',
-      '.nb-panel{width:min(680px,92vw);padding:clamp(16px,3vw,34px);text-align:center}',
-      '.nb-title{font-size:clamp(38px,8vw,84px);font-weight:900;letter-spacing:.06em;margin:0;',
+      '.nb-panel{width:min(680px,92vw);padding:clamp(10px,2vw,24px);text-align:center;margin:0 auto}',
+      '.nb-title{font-size:clamp(24px,4.4vw,44px);font-weight:900;letter-spacing:.05em;margin:0;white-space:nowrap;',
       'background:linear-gradient(92deg,#ff3d6e,#ffb02e,#2ee6ff);-webkit-background-clip:text;background-clip:text;',
       'color:transparent;filter:drop-shadow(0 0 18px rgba(255,80,120,.45));animation:nbPulse 2.6s ease-in-out infinite}',
-      '.nb-sub{opacity:.75;margin:6px 0 22px;letter-spacing:.28em;text-transform:uppercase;font-size:clamp(10px,1.6vw,14px)}',
-      '.nb-btn{display:block;width:min(340px,80vw);margin:10px auto;padding:13px 18px;font-size:17px;font-weight:800;',
+      '.nb-sub{opacity:.75;margin:4px 0 12px;letter-spacing:.28em;text-transform:uppercase;font-size:clamp(10px,1.6vw,13px)}',
+      '.nb-btn{display:block;width:min(340px,80vw);margin:8px auto;padding:11px 16px;font-size:16px;font-weight:800;',
       'letter-spacing:.12em;color:#081018;background:linear-gradient(90deg,#2ee6ff,#7cf0a8);border:0;border-radius:12px;',
       'cursor:pointer;box-shadow:0 6px 0 rgba(0,0,0,.35),0 0 22px rgba(46,230,255,.35);transition:transform .12s,filter .12s}',
       '.nb-btn:hover{transform:translateY(-2px);filter:brightness(1.12)}',
       '.nb-btn:active{transform:translateY(2px)}',
       '.nb-btn.ghost{background:rgba(255,255,255,.08);color:#dfe8ff;box-shadow:0 4px 0 rgba(0,0,0,.3)}',
-      '.nb-row{display:flex;gap:10px;justify-content:center;flex-wrap:wrap;margin:14px 0}',
-      '.nb-card{flex:1 1 150px;max-width:220px;padding:12px;border-radius:14px;cursor:pointer;',
+      '.nb-row{display:flex;gap:10px;justify-content:center;flex-wrap:wrap;margin:12px auto;max-width:560px}',
+      '.nb-card{flex:1 1 45%;max-width:260px;padding:10px;border-radius:14px;cursor:pointer;',
       'background:rgba(255,255,255,.06);border:2px solid transparent;transition:border .12s,transform .12s}',
       '.nb-card:hover{transform:translateY(-3px)}',
       '.nb-card.sel{border-color:#2ee6ff;background:rgba(46,230,255,.14)}',
-      '.nb-card h3{margin:6px 0 4px;font-size:16px}',
-      '.nb-card p{margin:0;font-size:12px;opacity:.7}',
-      '.nb-card canvas{width:100%;border-radius:8px;background:#0a0d18}',
+      '.nb-card h3{margin:4px 0 2px;font-size:15px}',
+      '.nb-card p{margin:0;font-size:11px;opacity:.7;line-height:1.35}',
+      '.nb-card canvas{width:100%;height:112px;border-radius:8px;background:#0a0d18}',
       '.nb-swatches{display:flex;gap:8px;justify-content:center;margin:12px 0}',
       '.nb-swatch{width:34px;height:34px;border-radius:50%;cursor:pointer;border:3px solid transparent}',
       '.nb-swatch.sel{border-color:#fff;transform:scale(1.15)}',
@@ -3759,7 +3779,169 @@ touch-action:none;user-select:none;-webkit-user-select:none;overscroll-behavior:
   NB.cam = C;
 })(window.NB = window.NB || {});
 
-/* ==== main.js (456 lignes) ==== */
+/* ==== qa.js (161 lignes) ==== */
+// NITRO BRAWL — harnais QA visuel : scènes figées en panneaux pour inspection des défauts.
+// URL : ?qa=kart|arena0..3|fx|pickups   (rendu statique, déterministe)
+(function (NB) {
+  'use strict';
+  var M = NB.M;
+  var Q = {};
+  var state = null;
+
+  Q.setup = function (name) {
+    state = { name: name, karts: [], arena: null, ground: null, steps: 0 };
+    if (name === 'kart') {
+      state.ground = NB.gl.createMesh(NB.mesh.box(40, 0.4, 40, [0.8, 0.66, 0.42]));
+      state.parts = NB.mesh.kartParts();
+      state.mb = NB.gl.createMesh(state.parts.body);
+      state.ma = NB.gl.createMesh(state.parts.accent);
+      state.md = NB.gl.createMesh(state.parts.dark);
+      return;
+    }
+    var mi = name === 'arena1' ? 1 : name === 'arena2' ? 2 : name === 'arena3' ? 3 : 0;
+    var map = NB.maps.list[mi];
+    var arena = NB.arena.build(map);
+    state.arena = arena;
+    NB.game = NB.game || {};
+    NB.game.arena = arena; NB.game.map = map; NB.game.karts = []; NB.game.events = [];
+    NB.game.projectiles = []; NB.game.hazards = []; NB.game.time = 0;
+    var cols = [[0.95, 0.25, 0.2], [0.2, 0.65, 1], [0.35, 0.9, 0.4], [1, 0.8, 0.15]];
+    for (var i = 0; i < 4; i++) {
+      var sp = arena.spawns[i];
+      var k = NB.kart.create({
+        id: i, name: 'Q' + i, color: cols[i], accent: [cols[i][0] * 0.4, cols[i][1] * 0.4, cols[i][2] * 0.4],
+        isPlayer: i === 0, isBot: i > 0, pos: [sp[0], sp[1]], yaw: i * 0.9, arena: arena, difficulty: 'pro'
+      });
+      k.invulnT = 0;
+      state.karts.push(k);
+      NB.game.karts.push(k);
+    }
+    NB.pickups.init(arena);
+    if (name === 'fx') setupFx(state);
+  };
+
+  function setupFx(st) {
+    var a = st.arena;
+    st.karts[1].shieldT = 4;
+    st.karts[2].boostT = 2;
+    st.karts[3].oilT = 1.5;
+    NB.game.hazards.push({ kind: 'mine', pos: [st.karts[0].pos[0] + 4, 0, st.karts[0].pos[2] + 3], life: 12, age: 1, owner: 9, spin: 0 });
+    NB.game.hazards.push({ kind: 'oil', pos: [st.karts[0].pos[0] - 5, 0.04, st.karts[0].pos[2] + 2], life: 6, age: 1, owner: 9, r: 2.2 });
+    var boom = [st.karts[0].pos[0] + 7, 1.2, st.karts[0].pos[2] - 4];
+    NB.fx.ring(boom, 5, [1, 0.7, 0.3], 0.5);
+    for (var i = 0; i < 12; i++) NB.fx.fire(boom, M.randRange(0.6, 1.5), 0.6);
+    for (i = 0; i < 8; i++) NB.fx.smoke(boom, [M.randRange(-3, 3), 2, M.randRange(-3, 3)], 1.4, [0.45, 0.45, 0.5], 1.1);
+    NB.fx.debris(boom, [0.35, 0.33, 0.36], 8);
+    NB.fx.beam([st.karts[0].pos[0], 1, st.karts[0].pos[2]], boom, [1, 0.5, 0.2], 0.4);
+    NB.fx.text3d([st.karts[0].pos[0], 2.4, st.karts[0].pos[2]], '💥', [1, 0.8, 0.3], 1.2);
+    for (i = 0; i < 14; i++) NB.fx.skid([st.karts[0].pos[0] - 6 + i * 0.5, 0, st.karts[0].pos[2] - 6], 0.4, 0.4, 0.3);
+    NB.game.projectiles.push({
+      kind: 'rocket', pos: [st.karts[0].pos[0] - 2, 1, st.karts[0].pos[2] + 6],
+      vel: [10, 0, -10], life: 2, owner: 9, targetId: -1, spin: 0, age: 0
+    });
+    for (i = 0; i < 10; i++) NB.fx.update(1 / 60);
+  }
+
+  function camAt(pos, tgt, fov) {
+    var th = (state.arena && state.arena.map.theme) || {
+      skyTop: [0.28, 0.5, 0.85], skyBottom: [0.95, 0.8, 0.6], fog: [0.88, 0.78, 0.62],
+      sunDir: [0.45, 0.85, 0.3], ambient: 0.62
+    };
+    return {
+      pos: pos, target: tgt, fov: fov || 1.0, aspect: 1, skyTop: th.skyTop, skyBottom: th.skyBottom,
+      fogColor: th.fog, fogNear: 50, fogFar: 200, sunDir: th.sunDir, ambient: th.ambient
+    };
+  }
+
+  function panels(list) {
+    var W = NB.gl.width, H = NB.gl.height;
+    var cols = list.length > 2 ? 2 : list.length;
+    var rows = Math.ceil(list.length / cols);
+    var pw = W / cols, ph = H / rows;
+    for (var i = 0; i < list.length; i++) {
+      var cx = i % cols, cy = Math.floor(i / cols);
+      NB.gl.scissor(cx * pw, H - (cy + 1) * ph, pw, ph);
+      var cam = list[i](pw / ph);
+      cam.aspect = pw / ph;
+      NB.gl.begin(cam);
+      drawWorld();
+      NB.gl.end();
+    }
+    NB.gl.noScissor();
+  }
+
+  function drawWorld() {
+    var i;
+    if (state.ground) NB.gl.draw(state.ground, M.fromTranslation(M.create(), [0, -0.2, 0]));
+    if (state.arena) state.arena.draw();
+    if (state.name === 'kart') {
+      var m = M.compose(M.create(), [0, 0, 0], 0.5, [1, 1, 1]);
+      NB.gl.drawTinted(state.mb, m, [0.9, 0.25, 0.2]);
+      NB.gl.drawTinted(state.ma, m, [0.36, 0.1, 0.1]);
+      NB.gl.draw(state.md, m);
+      NB.fx.shadow(0, 0, 1.15, 0.34);
+    } else {
+      NB.pickups.draw();
+      NB.kart.drawAll();
+      NB.weapons.draw();
+      NB.fx.draw();
+    }
+  }
+
+  Q.draw = function (name) {
+    if (name === 'kart') {
+      panels([
+        function (a) { return camAt([0, 1.2, -4.2], [0, 0.6, 0], 0.9); },
+        function (a) { return camAt([4.2, 1.1, 0], [0, 0.6, 0], 0.9); },
+        function (a) { return camAt([3, 1.6, 3], [0, 0.6, 0], 0.9); },
+        function (a) { return camAt([0.01, 5.5, 0.01], [0, 0.4, 0], 0.9); }
+      ]);
+      return;
+    }
+    if (name === 'pickups') {
+      panels([function (a) { return camAt([0, 3.2, 12], [0, 1, 0], 0.9); }]);
+      return;
+    }
+    var k0 = state.karts[0];
+    var f = [-Math.sin(k0.yaw), 0, -Math.cos(k0.yaw)];
+    panels([
+      function (a) { return camAt([k0.pos[0] - f[0] * 7, k0.pos[1] + 2.4, k0.pos[2] - f[2] * 7], [k0.pos[0] + f[0] * 6, 1, k0.pos[2] + f[2] * 6], 0.9); },
+      function (a) {
+        var b = state.arena.bounds;
+        var cx = (b.minX + b.maxX) / 2, cz = (b.minZ + b.maxZ) / 2;
+        return camAt([cx + 40, 34, cz + 40], [cx, 0, cz], 0.9);
+      },
+      function (a) { return camAt([k0.pos[0] + 3, 0.9, k0.pos[2] + 3], [k0.pos[0], 1.4, k0.pos[2]], 1.1); },
+      function (a) {
+        var r = state.arena.ramps[0];
+        return camAt([r.x + 9, 2.2, r.z + 9], [r.x, 1.2, r.z], 0.95);
+      }
+    ]);
+  };
+
+  // scène pickups : une rangée des 8 types
+  Q.setupPickups = function () {
+    state = { name: 'pickups', karts: [], arena: null };
+    NB.game = NB.game || {};
+    NB.game.karts = []; NB.game.events = []; NB.game.time = 0;
+    NB.game.projectiles = []; NB.game.hazards = [];
+    var b = NB.mesh.builder();
+    b.box(0, -0.2, 0, 30, 0.4, 12, [0.3, 0.32, 0.38]);
+    state.ground = NB.gl.createMesh(b.build());
+    NB.pickups.list = [];
+    var kinds = NB.pickups.KINDS;
+    for (var i = 0; i < kinds.length; i++) {
+      NB.pickups.list.push({
+        id: i, pad: [(i - 3.5) * 2.4, 0], kind: kinds[i],
+        pos: [(i - 3.5) * 2.4, 1.05, 0], taken: false, respawnAt: 0, t: i * 0.7
+      });
+    }
+  };
+
+  NB.qa = Q;
+})(window.NB = window.NB || {});
+
+/* ==== main.js (485 lignes) ==== */
 // NITRO BRAWL — boucle de jeu, caméra, règles de match, bootstrap
 (function (NB) {
   'use strict';
@@ -3800,7 +3982,18 @@ touch-action:none;user-select:none;-webkit-user-select:none;overscroll-behavior:
     wireHud();
     NB.game = { phase: 'menu', karts: [], events: [], time: 0, shake: 0, slowmo: 1 };
     G.autopilot = /[?&]autopilot=1/.test(location.search);
-    startDemo();
+    var qa = (location.search.match(/[?&]qa=([a-z0-9]+)/) || [])[1];
+    var scr = (location.search.match(/[?&]screen=([a-z]+)/) || [])[1];
+    if (qa) {
+      G.qaMode = qa;
+      if (qa === 'pickups') NB.qa.setupPickups(); else NB.qa.setup(qa);
+      els0();
+    } else if (scr) {
+      G.uiFreeze = true;
+      NB.hud.screen(scr, scr === 'results' ? sampleResults() : null);
+    } else {
+      startDemo();
+    }
     document.addEventListener('visibilitychange', function () {
       if (document.hidden && NB.game.phase === 'playing') setPhase('paused');
     });
@@ -3947,8 +4140,8 @@ touch-action:none;user-select:none;-webkit-user-select:none;overscroll-behavior:
     g.time += dt;
     g.fps = g.fps ? g.fps * 0.9 + (1 / dt) * 0.1 : 60;
     try {
-      update(dt);
-      draw();
+      if (G.qaMode) NB.qa.draw(G.qaMode);
+      else { update(dt); draw(); }
     } catch (e) {
       cancelAnimationFrame(raf);
       NB.util.dbg('fatal frame error', e && e.stack || e);
@@ -3957,9 +4150,27 @@ touch-action:none;user-select:none;-webkit-user-select:none;overscroll-behavior:
     NB.input.endFrame();
   }
 
+  function els0() {
+    var h = document.getElementById('hud');
+    if (h) h.classList.add('nb-hidden');
+  }
+
+  function sampleResults() {
+    var rows = [];
+    var names = ['TOI', 'Volt', 'Rico', 'Nova', 'Blitz', 'Tango', 'Ziggy', 'Koda'];
+    for (var i = 0; i < 8; i++) {
+      rows.push({
+        rank: i + 1, name: names[i], kills: 9 - i, deaths: i, color: [0.9, 0.3, 0.2],
+        isPlayer: i === 0, lives: 3, shots: 20, hits: 10
+      });
+    }
+    return { mode: 'deathmatch', map: 'Dust Bowl', winner: { isPlayer: true }, playerRank: 1, rows: rows };
+  }
+
   function update(dt) {
     var g = NB.game;
     if (g.phase === 'paused') return;
+    if (G.uiFreeze) return;
     if (G.frozen) { NB.hud.update(dt); return; }
     if (g.phase === 'countdown') {
       g.countdown -= dt;

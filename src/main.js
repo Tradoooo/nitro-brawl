@@ -38,7 +38,18 @@
     wireHud();
     NB.game = { phase: 'menu', karts: [], events: [], time: 0, shake: 0, slowmo: 1 };
     G.autopilot = /[?&]autopilot=1/.test(location.search);
-    startDemo();
+    var qa = (location.search.match(/[?&]qa=([a-z0-9]+)/) || [])[1];
+    var scr = (location.search.match(/[?&]screen=([a-z]+)/) || [])[1];
+    if (qa) {
+      G.qaMode = qa;
+      if (qa === 'pickups') NB.qa.setupPickups(); else NB.qa.setup(qa);
+      els0();
+    } else if (scr) {
+      G.uiFreeze = true;
+      NB.hud.screen(scr, scr === 'results' ? sampleResults() : null);
+    } else {
+      startDemo();
+    }
     document.addEventListener('visibilitychange', function () {
       if (document.hidden && NB.game.phase === 'playing') setPhase('paused');
     });
@@ -185,8 +196,8 @@
     g.time += dt;
     g.fps = g.fps ? g.fps * 0.9 + (1 / dt) * 0.1 : 60;
     try {
-      update(dt);
-      draw();
+      if (G.qaMode) NB.qa.draw(G.qaMode);
+      else { update(dt); draw(); }
     } catch (e) {
       cancelAnimationFrame(raf);
       NB.util.dbg('fatal frame error', e && e.stack || e);
@@ -195,9 +206,27 @@
     NB.input.endFrame();
   }
 
+  function els0() {
+    var h = document.getElementById('hud');
+    if (h) h.classList.add('nb-hidden');
+  }
+
+  function sampleResults() {
+    var rows = [];
+    var names = ['TOI', 'Volt', 'Rico', 'Nova', 'Blitz', 'Tango', 'Ziggy', 'Koda'];
+    for (var i = 0; i < 8; i++) {
+      rows.push({
+        rank: i + 1, name: names[i], kills: 9 - i, deaths: i, color: [0.9, 0.3, 0.2],
+        isPlayer: i === 0, lives: 3, shots: 20, hits: 10
+      });
+    }
+    return { mode: 'deathmatch', map: 'Dust Bowl', winner: { isPlayer: true }, playerRank: 1, rows: rows };
+  }
+
   function update(dt) {
     var g = NB.game;
     if (g.phase === 'paused') return;
+    if (G.uiFreeze) return;
     if (G.frozen) { NB.hud.update(dt); return; }
     if (g.phase === 'countdown') {
       g.countdown -= dt;
