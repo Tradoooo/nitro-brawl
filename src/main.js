@@ -60,7 +60,7 @@
       var m = NB.maps.list[0];
       G.startMatch({ mapId: m.id, mode: 'deathmatch', difficulty: 'pro' });
     }
-    if (/[?&]selftest/.test(location.search)) setTimeout(selftest, 400);
+    if (/[?&]selftest/.test(location.search)) selftest();
   };
 
   function fatal() {

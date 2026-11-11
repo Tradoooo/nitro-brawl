@@ -1,51 +1,111 @@
-// NITRO BRAWL — couche de rendu : adaptateur Three.js (API identique à l'ancien moteur maison)
-// Fournit : init/resize/createMesh/draw/drawTinted/batch*/sprite*/begin/end/project/stats.
+// NITRO BRAWL — couche de rendu : adaptateur Three.js r149.
+// Éclairage/gamma/fog dans NOTRE shader (identique sur tous les navigateurs),
+// Three gère scène, meshs, matrices, caméra, tri du transparent.
 (function (NB) {
   'use strict';
   var G = {};
-  var renderer = null, scene = null, camera = null, sun = null, dirLight = null, ambLight = null;
-  var canvas = null;
+  var renderer = null, scene = null, camera = null, sun = null;
   var pool = [], poolIdx = 0;
   var matCache = {};
   var skyCache = {};
-  var batchMesh = null, batchGeo = null, batchArr = null, batchN = 0, BATCH_CAP = 24000;
+  var batchMesh = null, batchGeo = null, batchArr = null, batchN = 0;
   var sprAdd = null, sprAddGeo = null, sprAddArr = null, sprAddN = 0;
   var sprNrm = null, sprNrmGeo = null, sprNrmArr = null, sprNrmN = 0;
-  var SPR_CAP = 8000;   // sommets (6 par sprite)
+  var SPR_CAP = 8000;
   var IDENTITY = null;
   var camRight = [1, 0, 0], camUp = [0, 1, 0];
   var lastFov = -1, lastTheme = '', lastAspect = -1;
 
-  // conversion sRGB -> linéaire (flux de travail linéaire de three + sortie sRGB)
-  var LIN = new Float32Array(1024);
-  (function () { for (var i = 0; i < 1024; i++) LIN[i] = Math.pow(i / 1023, 2.2); })();
-  function lin(c) { return LIN[Math.max(0, Math.min(1023, (c * 1023) | 0))]; }
+  // uniforms partagés par tous les matériaux opaques
+  var U = {
+    uTint: { value: null },
+    uLightDir: { value: null },
+    uAmbient: { value: 0.6 },
+    uFogColor: { value: null },
+    uFogNear: { value: 60 },
+    uFogFar: { value: 220 }
+  };
+
+  var VS = [
+    'attribute vec3 color;',
+    'varying vec3 vColor; varying vec3 vN; varying float vDepth;',
+    'void main() {',
+    '  vColor = color;',
+    '  vN = normalize(mat3(modelMatrix) * normal);',
+    '  vec4 mv = modelViewMatrix * vec4(position, 1.0);',
+    '  vDepth = -mv.z;',
+    '  gl_Position = projectionMatrix * mv;',
+    '}'
+  ].join('\n');
+
+  var FS = [
+    'precision highp float;',
+    'varying vec3 vColor; varying vec3 vN; varying float vDepth;',
+    'uniform vec3 uTint, uLightDir, uFogColor;',
+    'uniform float uAmbient, uFogNear, uFogFar;',
+    'void main() {',
+    '  vec3 n = normalize(vN);',
+    '  float d = max(dot(n, normalize(uLightDir)), 0.0);',
+    '  vec3 lin = pow(vColor * uTint, vec3(2.2));',
+    '  vec3 lit = lin * (uAmbient + d * (1.0 - uAmbient));',
+    '  float f = clamp((vDepth - uFogNear) / max(1.0, uFogFar - uFogNear), 0.0, 1.0);',
+    '  vec3 col = mix(lit, pow(uFogColor, vec3(2.2)), f);',
+    '  gl_FragColor = vec4(pow(col, vec3(0.4545)), 1.0);',
+    '}'
+  ].join('\n');
+
+  var SPR_VS = [
+    'attribute vec4 aColor; attribute vec2 aUV;',
+    'varying vec4 vColor; varying vec2 vUV;',
+    'void main(){ vColor=aColor; vUV=aUV; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }'
+  ].join('\n');
+  var SPR_FS = [
+    'precision highp float;',
+    'varying vec4 vColor; varying vec2 vUV;',
+    'void main(){ float r=length(vUV); float a=smoothstep(1.0,0.15,r)*vColor.a;',
+    '  if(a<0.004) discard; gl_FragColor=vec4(vColor.rgb,a); }'
+  ].join('\n');
 
   G.time = 0;
   G.stats = { calls: 0, tris: 0, sprites: 0 };
 
-  function mat3key(r, g, b) {
-    return ((r * 16) | 0) + '_' + ((g * 16) | 0) + '_' + ((b * 16) | 0);
+  function opaqueMat(tint) {
+    var m = new THREE.ShaderMaterial({
+      vertexShader: VS, fragmentShader: FS,
+      uniforms: {
+        uTint: { value: new THREE.Vector3(tint[0], tint[1], tint[2]) },
+        uLightDir: U.uLightDir, uAmbient: U.uAmbient,
+        uFogColor: U.uFogColor, uFogNear: U.uFogNear, uFogFar: U.uFogFar
+      }
+    });
+    return m;
+  }
+
+  function baseMat() {
+    if (!matCache.base) matCache.base = opaqueMat([1, 1, 1]);
+    return matCache.base;
+  }
+
+  function tintMat(t) {
+    var key = ((t[0] * 16) | 0) + '_' + ((t[1] * 16) | 0) + '_' + ((t[2] * 16) | 0);
+    if (!matCache[key]) matCache[key] = opaqueMat(t);
+    return matCache[key];
   }
 
   G.init = function (cv) {
-    canvas = cv;
     if (typeof THREE === 'undefined') return false;
     IDENTITY = NB.M.create();
+    U.uLightDir.value = new THREE.Vector3(0.5, 0.9, 0.35);
+    U.uFogColor.value = new THREE.Vector3(0.6, 0.7, 0.9);
+    U.uTint.value = new THREE.Vector3(1, 1, 1);
     try {
       renderer = new THREE.WebGLRenderer({ canvas: cv, antialias: true, alpha: false, powerPreference: 'high-performance' });
     } catch (e) { NB.util.dbg('renderer', e); return false; }
-    if (THREE.ColorManagement) THREE.ColorManagement.legacyMode = false;
-    renderer.outputEncoding = THREE.sRGBEncoding;
+    renderer.outputEncoding = THREE.LinearEncoding;   // gamma géré par NOTRE shader
     renderer.setClearColor(0x0b0e1a, 1);
     scene = new THREE.Scene();
     camera = new THREE.PerspectiveCamera(60, 1.6, 0.3, 420);
-    camera.matrixAutoUpdate = true;
-    ambLight = new THREE.AmbientLight(0xffffff, 0.6);
-    dirLight = new THREE.DirectionalLight(0xffffff, 0.4);
-    dirLight.position.set(50, 90, 30);
-    scene.add(ambLight, dirLight);
-    scene.fog = new THREE.Fog(0x99aabb, 60, 220);
+    scene.fog = null;   // fog géré par le shader
     makeBatch();
     makeSprites();
     makeSun();
@@ -60,10 +120,8 @@
     g.addColorStop(0, 'rgba(255,250,225,0.95)');
     g.addColorStop(0.25, 'rgba(255,225,170,0.45)');
     g.addColorStop(1, 'rgba(255,200,140,0)');
-    x.fillStyle = g;
-    x.fillRect(0, 0, 128, 128);
+    x.fillStyle = g; x.fillRect(0, 0, 128, 128);
     var tex = new THREE.CanvasTexture(c);
-    tex.encoding = THREE.sRGBEncoding;
     sun = new THREE.Sprite(new THREE.SpriteMaterial({
       map: tex, blending: THREE.AdditiveBlending, depthWrite: false, transparent: true, fog: false
     }));
@@ -72,7 +130,7 @@
   }
 
   function makeBatch() {
-    batchArr = new Float32Array(BATCH_CAP * 9);
+    batchArr = new Float32Array(24000 * 9);
     batchGeo = new THREE.BufferGeometry();
     var ib = new THREE.InterleavedBuffer(batchArr, 9);
     ib.setUsage(THREE.DynamicDrawUsage);
@@ -80,28 +138,11 @@
     batchGeo.setAttribute('normal', new THREE.InterleavedBufferAttribute(ib, 3, 3));
     batchGeo.setAttribute('color', new THREE.InterleavedBufferAttribute(ib, 3, 6));
     batchGeo.setDrawRange(0, 0);
-    batchMesh = new THREE.Mesh(batchGeo, matCache.base || baseMat());
+    batchMesh = new THREE.Mesh(batchGeo, baseMat());
     batchMesh.frustumCulled = false;
     batchMesh.visible = false;
     scene.add(batchMesh);
   }
-
-  function baseMat() {
-    if (!matCache.base) matCache.base = new THREE.MeshLambertMaterial({ vertexColors: true });
-    return matCache.base;
-  }
-
-  var SPR_VS = [
-    'attribute vec4 aColor; attribute vec2 aUV;',
-    'varying vec4 vColor; varying vec2 vUV;',
-    'void main(){ vColor=aColor; vUV=aUV; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }'
-  ].join('\n');
-  var SPR_FS = [
-    'precision highp float;',
-    'varying vec4 vColor; varying vec2 vUV;',
-    'void main(){ float r=length(vUV); float a=smoothstep(1.0,0.15,r)*vColor.a;',
-    '  if(a<0.004) discard; gl_FragColor=vec4(vColor.rgb,a); }'
-  ].join('\n');
 
   function spriteMesh(additive) {
     var arr = new Float32Array(SPR_CAP * 9);
@@ -119,9 +160,9 @@
     var m = new THREE.Mesh(geo, mat);
     m.frustumCulled = false;
     m.visible = false;
-    m.renderOrder = additive ? 12 : 10;   // la fumée (alpha) toujours sous le feu (additif)
+    m.renderOrder = additive ? 12 : 10;
     scene.add(m);
-    return { mesh: m, geo: geo, arr: arr, n: 0 };
+    return { mesh: m, geo: geo, arr: arr };
   }
 
   function makeSprites() {
@@ -141,17 +182,12 @@
   G.gl = function () { return renderer ? renderer.getContext() : null; };
 
   G.createMesh = function (f32) {
-    var out = new Float32Array(f32.length);
-    out.set(f32);
-    for (var i = 6; i < out.length; i += 9) {   // couleurs -> espace linéaire
-      out[i] = lin(f32[i]); out[i + 1] = lin(f32[i + 1]); out[i + 2] = lin(f32[i + 2]);
-    }
     var geo = new THREE.BufferGeometry();
-    var ib = new THREE.InterleavedBuffer(out, 9);
+    var ib = new THREE.InterleavedBuffer(f32, 9);
     geo.setAttribute('position', new THREE.InterleavedBufferAttribute(ib, 3, 0));
     geo.setAttribute('normal', new THREE.InterleavedBufferAttribute(ib, 3, 3));
     geo.setAttribute('color', new THREE.InterleavedBufferAttribute(ib, 3, 6));
-    return { geometry: geo, count: out.length / 9, data: f32 };
+    return { geometry: geo, count: f32.length / 9, data: f32 };
   };
 
   G.deleteMesh = function (m) { if (m && m.geometry) m.geometry.dispose(); };
@@ -164,8 +200,9 @@
     for (var i = 0; i < pool.length; i++) pool[i].visible = false;
     applyCamera(cam);
     applyTheme(cam);
-    camRight = [camera.matrixWorld.elements[0], camera.matrixWorld.elements[4], camera.matrixWorld.elements[8]];
-    camUp = [camera.matrixWorld.elements[1], camera.matrixWorld.elements[5], camera.matrixWorld.elements[9]];
+    var e = camera.matrixWorld.elements;
+    camRight = [e[0], e[4], e[8]];
+    camUp = [e[1], e[5], e[9]];
     batchN = 0; sprAddN = 0; sprNrmN = 0;
     batchMesh.visible = false; sprAdd.visible = false; sprNrm.visible = false;
   };
@@ -201,17 +238,14 @@
     if (!skyCache[key]) skyCache[key] = skyTexture(top, bot);
     scene.background = skyCache[key];
     var fog = cam.fogColor || [0.6, 0.7, 0.9];
-    scene.fog.color.setRGB(fog[0], fog[1], fog[2]).convertSRGBToLinear();
-    scene.fog.near = cam.fogNear == null ? 60 : cam.fogNear;
-    scene.fog.far = cam.fogFar == null ? 220 : cam.fogFar;
-    var amb = cam.ambient == null ? 0.6 : cam.ambient;
-    ambLight.intensity = amb;
-    dirLight.intensity = Math.max(0.05, 1 - amb);
+    U.uFogColor.value.set(fog[0], fog[1], fog[2]);
+    U.uFogNear.value = cam.fogNear == null ? 60 : cam.fogNear;
+    U.uFogFar.value = cam.fogFar == null ? 220 : cam.fogFar;
+    U.uAmbient.value = cam.ambient == null ? 0.6 : cam.ambient;
     var sd = cam.sunDir || [0.5, 0.9, 0.35];
-    dirLight.position.set(sd[0] * 120, sd[1] * 120, sd[2] * 120);
+    U.uLightDir.value.set(sd[0], sd[1], sd[2]);
     if (sun) {
       sun.position.set(camera.position.x + sd[0] * 380, camera.position.y + sd[1] * 380, camera.position.z + sd[2] * 380);
-      sun.material.color.setRGB(1, 0.95, 0.85).convertSRGBToLinear();
     }
   }
 
@@ -226,7 +260,6 @@
     g.addColorStop(1, rgb(bot));
     x.fillStyle = g; x.fillRect(0, 0, 4, 256);
     var t = new THREE.CanvasTexture(c);
-    t.encoding = THREE.sRGBEncoding;
     t.minFilter = THREE.LinearFilter;
     return t;
   }
@@ -258,16 +291,9 @@
 
   G.drawTinted = function (mesh, mat, tint) {
     if (!mesh || !mesh.geometry) return;
-    var key = mat3key(tint[0], tint[1], tint[2]);
-    var mtl = matCache[key];
-    if (!mtl) {
-      mtl = new THREE.MeshLambertMaterial({ vertexColors: true });
-      mtl.color.setRGB(tint[0], tint[1], tint[2]).convertSRGBToLinear();
-      matCache[key] = mtl;
-    }
     var m = poolMesh();
     m.geometry = mesh.geometry;
-    m.material = mtl;
+    m.material = tintMat(tint);
     m.matrix.fromArray(mat || IDENTITY);
     m.matrixWorldNeedsUpdate = true;
     m.visible = true;
@@ -276,7 +302,6 @@
     G.stats.tris += mesh.count / 3;
   };
 
-  // ---------- batch dynamique (espace monde) ----------
   G.beginBatch = function () { batchN = 0; };
 
   G.batchVert = function (x, y, z, nx, ny, nz, r, g, b) {
@@ -284,7 +309,7 @@
     var i = batchN;
     batchArr[i] = x; batchArr[i + 1] = y; batchArr[i + 2] = z;
     batchArr[i + 3] = nx; batchArr[i + 4] = ny; batchArr[i + 5] = nz;
-    batchArr[i + 6] = lin(r); batchArr[i + 7] = lin(g); batchArr[i + 8] = lin(b);
+    batchArr[i + 6] = r; batchArr[i + 7] = g; batchArr[i + 8] = b;
     batchN += 9;
   };
 
@@ -309,7 +334,6 @@
     batchN = 0;
   };
 
-  // ---------- sprites (billboards) ----------
   G.beginSprites = function () { sprAddN = 0; sprNrmN = 0; };
 
   G.sprite = function (x, y, z, size, color, alpha, additive, rot) {
@@ -326,36 +350,35 @@
       var nux = -rx * sr + ux * cr, nuy = -ry * sr + uy * cr, nuz = -rz * sr + uz * cr;
       rx = nrx; ry = nry; rz = nrz; ux = nux; uy = nuy; uz = nuz;
     }
-    var lr = lin(color[0]), lg = lin(color[1]), lb = lin(color[2]);
     var i = at;
-    i = putVert(arr, i, x - rx - ux, y - ry - uy, z - rz - uz, lr, lg, lb, alpha, -1, -1);
-    i = putVert(arr, i, x + rx - ux, y + ry - uy, z + rz - uz, lr, lg, lb, alpha, 1, -1);
-    i = putVert(arr, i, x + rx + ux, y + ry + uy, z + rz + uz, lr, lg, lb, alpha, 1, 1);
-    i = putVert(arr, i, x - rx - ux, y - ry - uy, z - rz - uz, lr, lg, lb, alpha, -1, -1);
-    i = putVert(arr, i, x + rx + ux, y + ry + uy, z + rz + uz, lr, lg, lb, alpha, 1, 1);
-    i = putVert(arr, i, x - rx + ux, y - ry + uy, z - rz + uz, lr, lg, lb, alpha, -1, 1);
+    i = putVert(arr, i, x - rx - ux, y - ry - uy, z - rz - uz, color, alpha, -1, -1);
+    i = putVert(arr, i, x + rx - ux, y + ry - uy, z + rz - uz, color, alpha, 1, -1);
+    i = putVert(arr, i, x + rx + ux, y + ry + uy, z + rz + uz, color, alpha, 1, 1);
+    i = putVert(arr, i, x - rx - ux, y - ry - uy, z - rz - uz, color, alpha, -1, -1);
+    i = putVert(arr, i, x + rx + ux, y + ry + uy, z + rz + uz, color, alpha, 1, 1);
+    i = putVert(arr, i, x - rx + ux, y - ry + uy, z - rz + uz, color, alpha, -1, 1);
     if (isAdd) sprAddN = i; else sprNrmN = i;
   };
 
-  function putVert(a, i, x, y, z, r, g, b, al, u, v) {
+  function putVert(a, i, x, y, z, c, al, u, v) {
     a[i] = x; a[i + 1] = y; a[i + 2] = z;
-    a[i + 3] = r; a[i + 4] = g; a[i + 5] = b; a[i + 6] = al;
+    a[i + 3] = c[0]; a[i + 4] = c[1]; a[i + 5] = c[2]; a[i + 6] = al;
     a[i + 7] = u; a[i + 8] = v;
     return i + 9;
   }
 
   function flushSprites() {
-    if (sprAddN > 0) {
-      sprAddGeo.setDrawRange(0, sprAddN / 9);
-      sprAddGeo.attributes.position.data.needsUpdate = true;
-      sprAdd.visible = true;
-      G.stats.sprites += sprAddN / 54;
-    }
     if (sprNrmN > 0) {
       sprNrmGeo.setDrawRange(0, sprNrmN / 9);
       sprNrmGeo.attributes.position.data.needsUpdate = true;
       sprNrm.visible = true;
       G.stats.sprites += sprNrmN / 54;
+    }
+    if (sprAddN > 0) {
+      sprAddGeo.setDrawRange(0, sprAddN / 9);
+      sprAddGeo.attributes.position.data.needsUpdate = true;
+      sprAdd.visible = true;
+      G.stats.sprites += sprAddN / 54;
     }
     sprAddN = 0; sprNrmN = 0;
   }
@@ -367,7 +390,6 @@
     if (renderer && scene && camera) renderer.render(scene, camera);
   };
 
-  // panneaux scindés (QA) : restreint clear + rendu à une région
   G.scissor = function (x, y, w, h) {
     if (!renderer) return;
     renderer.setScissorTest(true);
