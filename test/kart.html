@@ -1,0 +1,21 @@
+<!DOCTYPE html><html><head><meta charset="utf-8"><title>kart</title>
+<style>html,body{margin:0;height:100%;background:#111;overflow:hidden}canvas{width:100%;height:100%;display:block}</style>
+</head><body><canvas id="gl"></canvas>
+<script src="../src/math.js"></script><script src="../src/gl.js"></script><script src="../src/mesh.js"></script>
+<script>
+var M=NB.M,out={};
+var cv=document.getElementById('gl');NB.gl.init(cv);var W=1280,H=800;NB.gl.resize(W,H,1);var gl=NB.gl.gl();
+var parts=NB.mesh.kartParts();
+var mb=NB.gl.createMesh(parts.body),ma=NB.gl.createMesh(parts.accent),md=NB.gl.createMesh(parts.dark);
+var ground=NB.gl.createMesh(NB.mesh.box(30,0.4,30,[0.3,0.32,0.36]));
+function panel(i,cam,yaw){var pw=W/2;gl.enable(gl.SCISSOR_TEST);gl.scissor(i*pw,0,pw,H);gl.viewport(i*pw,0,pw,H);cam.aspect=pw/H;NB.gl.begin(cam);
+NB.gl.draw(ground,M.fromTranslation(M.create(),[0,-0.2,0]));
+var m=M.compose(M.create(),[0,0,0],yaw,[1,1,1]);
+NB.gl.drawTinted(mb,m,[0.9,0.2,0.15]);NB.gl.drawTinted(ma,m,[1,1,1]);NB.gl.draw(md,m);
+NB.gl.end();gl.disable(gl.SCISSOR_TEST);}
+var base={fov:1.0,skyTop:[0.2,0.3,0.6],skyBottom:[0.8,0.8,0.9],fogColor:[0.6,0.65,0.8],sunDir:[0.5,0.8,0.3],ambient:0.6,fogNear:30,fogFar:90};
+function camAt(p,t){var c={};for(var k in base)c[k]=base[k];c.pos=p;c.target=t;return c;}
+panel(0,camAt([2.6,1.3,2.6],[0,0.5,0]),0.7);
+panel(1,camAt([0.2,1.1,-3.2],[0,0.5,0]),0.0);
+out.ok=true;document.title='KART '+JSON.stringify(out);
+</script></body></html>

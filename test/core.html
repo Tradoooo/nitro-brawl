@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>core test</title>
+<style>html,body{margin:0;height:100%;background:#111;overflow:hidden}canvas{width:100%;height:100%;display:block}</style>
+</head><body>
+<canvas id="gl"></canvas>
+<script src="../src/math.js"></script>
+<script src="../src/gl.js"></script>
+<script src="../src/mesh.js"></script>
+<script>
+var M = NB.M, out = { panels: [] };
+try {
+  var cv = document.getElementById('gl');
+  out.glInit = NB.gl.init(cv);
+  var W = 1280, H = 800;
+  NB.gl.resize(W, H, 1);
+  var gl = NB.gl.gl();
+  var parts = NB.mesh.kartParts();
+  var mk = NB.gl.createMesh(parts.body);
+  var mAcc = NB.gl.createMesh(parts.accent);
+  var mDark = NB.gl.createMesh(parts.dark);
+  var crate = NB.gl.createMesh(NB.mesh.crate(1.2, [0.8, 0.45, 0.2]));
+  var ramp = (function () { var b = NB.mesh.builder(); b.ramp(0, 0, 0, 6, 2.2, 6, [0.35, 0.35, 0.45], '-z'); return NB.gl.createMesh(b.build()); })();
+  var ground = NB.gl.createMesh(NB.mesh.box(30, 0.4, 30, [0.25, 0.27, 0.32]));
+
+  function panel(i, cam, drawFn) {
+    var pw = W / 3;
+    gl.enable(gl.SCISSOR_TEST);
+    gl.scissor(i * pw, 0, pw, H);
+    gl.viewport(i * pw, 0, pw, H);
+    cam.aspect = pw / H;
+    NB.gl.begin(cam);
+    drawFn();
+    NB.gl.end();
+    gl.disable(gl.SCISSOR_TEST);
+  }
+
+  var base = {
+    fov: 1.0, skyTop: [0.15, 0.2, 0.45], skyBottom: [0.8, 0.7, 0.6],
+    fogColor: [0.6, 0.65, 0.8], sunDir: [0.5, 0.8, 0.3], ambient: 0.55, fogNear: 30, fogFar: 90
+  };
+  function camAt(pos, target) {
+    var c = {}; for (var k in base) c[k] = base[k];
+    c.pos = pos; c.target = target; return c;
+  }
+
+  function frame() {
+    panel(0, camAt([2.6, 1.5, 2.6], [0, 0.6, 0]), function () {
+      NB.gl.draw(ground, M.fromTranslation(M.create(), [0, -0.2, 0]));
+      NB.gl.draw(crate, null);
+    });
+    panel(1, camAt([3.2, 1.5, 3.2], [0, 0.6, 0]), function () {
+      NB.gl.draw(ground, M.fromTranslation(M.create(), [0, -0.2, 0]));
+      NB.gl.draw(mk, M.compose(M.create(), [0, 0, 0], 0.6, [1, 1, 1]));
+      NB.gl.draw(mAcc, M.compose(M.create(), [0, 0, 0], 0.6, [1, 1, 1]));
+      NB.gl.draw(mDark, M.compose(M.create(), [0, 0, 0], 0.6, [1, 1, 1]));
+    });
+    panel(2, camAt([9, 3.2, 9], [0, 1.1, 0]), function () {
+      NB.gl.draw(ground, M.fromTranslation(M.create(), [0, -0.2, 0]));
+      NB.gl.draw(ramp, null);
+    });
+    out.ok = true;
+    out.calls = NB.gl.stats.calls; out.tris = Math.round(NB.gl.stats.tris);
+    document.title = 'CORE ' + JSON.stringify(out);
+  }
+  frame();
+} catch (e) { out.ok = false; out.err = String(e && e.stack || e); document.title = 'CORE ' + JSON.stringify(out); }
+</script></body></html>

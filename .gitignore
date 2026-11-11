@@ -1,0 +1,4 @@
+test/*.png
+test/*.json
+/tmp/
+node_modules/
