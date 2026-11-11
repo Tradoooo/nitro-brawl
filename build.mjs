@@ -7,7 +7,7 @@ import { execSync } from 'node:child_process';
 
 const ORDER = [
   'math.js', 'gl.js', 'mesh.js', 'util.js', 'maps.js', 'arena.js', 'kart.js',
-  'pickups.js', 'weapons.js', 'bots.js', 'fx.js', 'audio.js', 'hud.js', 'input.js', 'camera.js', 'qa.js', 'main.js'
+  'pickups.js', 'weapons.js', 'bots.js', 'fx.js', 'audio.js', 'hud-css.js', 'hud.js', 'input.js', 'camera.js', 'qa.js', 'main.js'
 ];
 
 const THREE_CDN = 'https://unpkg.com/three@0.149.0/build/three.min.js';

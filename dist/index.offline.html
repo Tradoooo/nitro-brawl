@@ -3124,49 +3124,11 @@ touch-action:none;user-select:none;-webkit-user-select:none;overscroll-behavior:
   NB.audio = A;
 })(window.NB = window.NB || {});
 
-/* ==== hud.js (500 lignes) ==== */
-// NITRO BRAWL — interface : menus, HUD, minimap, killfeed, tactile (DOM/CSS uniquement)
+/* ==== hud-css.js (81 lignes) ==== */
+// NITRO BRAWL — feuille de style de l'interface (extraite de hud.js pour rester < 500 lignes)
 (function (NB) {
   'use strict';
-  var H = {};
-  var ui = null, touch = null, overlay = null, octx = null, mini = null, mctx = null;
-  var els = {};
-  var feed = [];
-  var flashT = 0, flashColor = [1, 0.2, 0.2];
-  var centerMsg = '', centerT = 0;
-  H.touch = { active: false, move: { x: 0, y: 0 }, fire: false, drift: false, use: false };
-  H.onInput = {};
-  H.killfeed = feed;
-
-  H.persist = {
-    get: function () {
-      return NB.util.store.get('nb.settings', { name: 'TOI', color: 1, difficulty: 'pro', mapId: 'dustbowl', mode: 'deathmatch' });
-    },
-    set: function (patch) {
-      var s = H.persist.get();
-      for (var k in patch) s[k] = patch[k];
-      NB.util.store.set('nb.settings', s);
-      return s;
-    }
-  };
-
-  H.COLORS = [
-    [0.95, 0.25, 0.2], [0.2, 0.65, 1], [1, 0.8, 0.15], [0.35, 0.9, 0.4],
-    [0.75, 0.4, 1], [1, 0.5, 0.12], [0.95, 0.35, 0.7], [0.55, 0.95, 0.9]
-  ];
-
-  function el(tag, cls, html) {
-    var e = document.createElement(tag);
-    if (cls) e.className = cls;
-    if (html != null) e.innerHTML = html;
-    return e;
-  }
-
-  H.injectCSS = function () {
-    if (document.getElementById('nb-css')) return;
-    var s = el('style');
-    s.id = 'nb-css';
-    s.textContent = [
+      NB.hudCss = [
       '#ui{font-family:ui-sans-serif,system-ui,sans-serif;color:#eaf2ff}',
       '.nb-screen{position:absolute;inset:0;display:flex;align-items:flex-start;justify-content:center;padding:26px 0 44px;',
       'background:radial-gradient(1200px 700px at 50% 20%,rgba(30,20,70,.55),rgba(6,8,18,.82));',
@@ -3231,8 +3193,63 @@ touch-action:none;user-select:none;-webkit-user-select:none;overscroll-behavior:
       '.nb-table .me{background:rgba(46,230,255,.12);font-weight:800}',
       '.nb-medal{font-size:44px}',
       '.nb-help{ text-align:left;font-size:14px;line-height:1.7;max-width:520px;margin:0 auto }',
-      'kbd{background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.25);border-radius:5px;padding:1px 7px;font-size:12px}'
-    ].join('');
+      'kbd{background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.25);border-radius:5px;padding:1px 7px;font-size:12px}',
+      '@media (max-width:820px),(max-height:560px){',
+      '#mini{width:110px;height:110px}#pauseBtn{top:130px;width:40px;height:40px}',
+      '#hud-speed{top:124px;left:50%;transform:translateX(-50%);bottom:auto;right:auto}',
+      '#hud-weapon{top:48px;left:50%;transform:translateX(-50%);bottom:auto;right:auto;text-align:center}',
+      '#hud-weapon .ico{font-size:24px}',
+      '#tDrift{right:30vw;bottom:6vh}#tFire{right:5vw;bottom:7vh}#tUse{right:7vw;bottom:32vh}',
+      '#killfeed{top:150px}.kf{font-size:11px}',
+      '#hud-clock{font-size:20px}#hud-rank{font-size:15px}',
+      '}'
+    ];
+})(window.NB = window.NB || {});
+
+/* ==== hud.js (435 lignes) ==== */
+// NITRO BRAWL — interface : menus, HUD, minimap, killfeed, tactile (DOM/CSS uniquement)
+(function (NB) {
+  'use strict';
+  var H = {};
+  var ui = null, touch = null, overlay = null, octx = null, mini = null, mctx = null;
+  var els = {};
+  var feed = [];
+  var flashT = 0, flashColor = [1, 0.2, 0.2];
+  var centerMsg = '', centerT = 0;
+  H.touch = { active: false, move: { x: 0, y: 0 }, fire: false, drift: false, use: false };
+  H.onInput = {};
+  H.killfeed = feed;
+
+  H.persist = {
+    get: function () {
+      return NB.util.store.get('nb.settings', { name: 'TOI', color: 1, difficulty: 'pro', mapId: 'dustbowl', mode: 'deathmatch' });
+    },
+    set: function (patch) {
+      var s = H.persist.get();
+      for (var k in patch) s[k] = patch[k];
+      NB.util.store.set('nb.settings', s);
+      return s;
+    }
+  };
+
+  H.COLORS = [
+    [0.95, 0.25, 0.2], [0.2, 0.65, 1], [1, 0.8, 0.15], [0.35, 0.9, 0.4],
+    [0.75, 0.4, 1], [1, 0.5, 0.12], [0.95, 0.35, 0.7], [0.55, 0.95, 0.9]
+  ];
+
+  function el(tag, cls, html) {
+    var e = document.createElement(tag);
+    if (cls) e.className = cls;
+    if (html != null) e.innerHTML = html;
+    return e;
+  }
+
+  H.injectCSS = function () {
+    if (document.getElementById('nb-css')) return;
+    if (!NB.hudCss) { NB.util.dbg('hudCss manquant'); return; }
+    var s = el('style');
+    s.id = 'nb-css';
+    s.textContent = NB.hudCss.join('');
     document.head.appendChild(s);
   };
 
@@ -3251,7 +3268,7 @@ touch-action:none;user-select:none;-webkit-user-select:none;overscroll-behavior:
       '<div class="hud-box" id="hud-rank"></div>' +
       '<div class="hud-box" id="hud-speed"></div>' +
       '<div class="hud-box" id="hud-weapon"></div>' +
-      '<div id="center"></div><div id="flash"></div><div id="threat">️</div>' +
+      '<div id="center"></div><div id="flash"></div><div id="threat">🚀</div>' +
       '<canvas id="overlay"></canvas></div><div id="screens"></div>';
     els.hud = ui.querySelector('#hud');
     els.clock = ui.querySelector('#hud-clock');
@@ -3808,7 +3825,7 @@ touch-action:none;user-select:none;-webkit-user-select:none;overscroll-behavior:
   NB.cam = C;
 })(window.NB = window.NB || {});
 
-/* ==== qa.js (161 lignes) ==== */
+/* ==== qa.js (181 lignes) ==== */
 // NITRO BRAWL — harnais QA visuel : scènes figées en panneaux pour inspection des défauts.
 // URL : ?qa=kart|arena0..3|fx|pickups   (rendu statique, déterministe)
 (function (NB) {
@@ -3967,10 +3984,30 @@ touch-action:none;user-select:none;-webkit-user-select:none;overscroll-behavior:
     }
   };
 
+  Q.ingame = function (touch) {
+    var g = NB.game;
+    NB.main.autopilotOn();
+    NB.main.startMatch({ mapId: 'dustbowl', mode: 'deathmatch', difficulty: 'pro' });
+    g.countdown = 0;
+    NB.main.setPhase('playing');
+    for (var i = 0; i < 360; i++) { g.time += 1 / 60; NB.main.step(1 / 60); }
+    var p = g.player;
+    NB.weapons.explode([p.pos[0] + 6, 1, p.pos[2] + 4], 3.2, 1, 1, [1, 0.6, 0.2]);
+    g.projectiles.push({
+      kind: 'homing', pos: [p.pos[0] + 14, 1.2, p.pos[2] + 10], vel: [-20, 0, -14],
+      life: 3, owner: 2, targetId: 0, spin: 0, age: 0
+    });
+    g.events.push({ t: 'kill', killerId: 1, victimId: 2, weapon: 'rocket' });
+    g.events.push({ t: 'kill', killerId: 0, victimId: 4, weapon: 'homing' });
+    NB.main.dispatch(g);
+    if (touch) NB.hud.setTouchVisible(true);
+    NB.main.freeze(true);
+  };
+
   NB.qa = Q;
 })(window.NB = window.NB || {});
 
-/* ==== main.js (485 lignes) ==== */
+/* ==== main.js (491 lignes) ==== */
 // NITRO BRAWL — boucle de jeu, caméra, règles de match, bootstrap
 (function (NB) {
   'use strict';
@@ -4013,7 +4050,9 @@ touch-action:none;user-select:none;-webkit-user-select:none;overscroll-behavior:
     G.autopilot = /[?&]autopilot=1/.test(location.search);
     var qa = (location.search.match(/[?&]qa=([a-z0-9]+)/) || [])[1];
     var scr = (location.search.match(/[?&]screen=([a-z]+)/) || [])[1];
-    if (qa) {
+    if (qa === 'ingame' || qa === 'touch') {
+      NB.qa.ingame(qa === 'touch');
+    } else if (qa) {
       G.qaMode = qa;
       if (qa === 'pickups') NB.qa.setupPickups(); else NB.qa.setup(qa);
       els0();
@@ -4448,6 +4487,10 @@ touch-action:none;user-select:none;-webkit-user-select:none;overscroll-behavior:
     document.body.appendChild(d);
   }
   G.selftest = selftest;
+  G.step = update;
+  G.autopilotOn = function () { G.autopilot = true; };
+  G.dispatch = dispatchEvents;
+  G.freeze = function (v) { G.frozen = !!v; };
   G.cam = NB.cam.cam;
   NB.main = G;
 })(window.NB = window.NB || {});

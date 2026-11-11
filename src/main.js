@@ -40,7 +40,9 @@
     G.autopilot = /[?&]autopilot=1/.test(location.search);
     var qa = (location.search.match(/[?&]qa=([a-z0-9]+)/) || [])[1];
     var scr = (location.search.match(/[?&]screen=([a-z]+)/) || [])[1];
-    if (qa) {
+    if (qa === 'ingame' || qa === 'touch') {
+      NB.qa.ingame(qa === 'touch');
+    } else if (qa) {
       G.qaMode = qa;
       if (qa === 'pickups') NB.qa.setupPickups(); else NB.qa.setup(qa);
       els0();
@@ -475,6 +477,10 @@
     document.body.appendChild(d);
   }
   G.selftest = selftest;
+  G.step = update;
+  G.autopilotOn = function () { G.autopilot = true; };
+  G.dispatch = dispatchEvents;
+  G.freeze = function (v) { G.frozen = !!v; };
   G.cam = NB.cam.cam;
   NB.main = G;
 })(window.NB = window.NB || {});

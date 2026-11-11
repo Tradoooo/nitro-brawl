@@ -156,5 +156,25 @@
     }
   };
 
+  Q.ingame = function (touch) {
+    var g = NB.game;
+    NB.main.autopilotOn();
+    NB.main.startMatch({ mapId: 'dustbowl', mode: 'deathmatch', difficulty: 'pro' });
+    g.countdown = 0;
+    NB.main.setPhase('playing');
+    for (var i = 0; i < 360; i++) { g.time += 1 / 60; NB.main.step(1 / 60); }
+    var p = g.player;
+    NB.weapons.explode([p.pos[0] + 6, 1, p.pos[2] + 4], 3.2, 1, 1, [1, 0.6, 0.2]);
+    g.projectiles.push({
+      kind: 'homing', pos: [p.pos[0] + 14, 1.2, p.pos[2] + 10], vel: [-20, 0, -14],
+      life: 3, owner: 2, targetId: 0, spin: 0, age: 0
+    });
+    g.events.push({ t: 'kill', killerId: 1, victimId: 2, weapon: 'rocket' });
+    g.events.push({ t: 'kill', killerId: 0, victimId: 4, weapon: 'homing' });
+    NB.main.dispatch(g);
+    if (touch) NB.hud.setTouchVisible(true);
+    NB.main.freeze(true);
+  };
+
   NB.qa = Q;
 })(window.NB = window.NB || {});
