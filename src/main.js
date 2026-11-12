@@ -29,7 +29,7 @@
       document.title = 'NB DIAG ok=' + ok + ' ctx=' + ctxOk + ' three=' + (typeof THREE !== 'undefined') +
         ' err=' + String(glErr).slice(0, 90);
     }
-    if (!ok) { fatal(); return; }
+    if (!ok) { NB.hud.fatal(); return; }
     G.fit();
     window.addEventListener('resize', G.fit);
     NB.input.init();
@@ -66,24 +66,6 @@
     }
     if (/[?&]selftest/.test(location.search)) selftest();
   };
-
-  function fatal() {
-    if (!uiEl) return;
-    uiEl.innerHTML = '<div style="position:absolute;inset:0;display:flex;align-items:center;' +
-      'justify-content:center;text-align:center;padding:24px;font-size:17px;line-height:1.7">' +
-      '<div style="max-width:640px"><h1 style="font-size:30px;margin-bottom:14px">NITRO BRAWL</h1>' +
-      '<b>WebGL est indisponible sur ce navigateur.</b><br>' +
-      'Deux causes possibles :<br>' +
-      '1) accélération matérielle désactivée → chrome://settings → activer ' +
-      '« Utiliser l\'accélération matérielle » puis relancer ;<br>' +
-      '2) pas de GPU sur cette machine → Chrome bloque le WebGL logiciel : lance-le avec ' +
-      '<code style="background:rgba(255,255,255,.12);padding:2px 8px;border-radius:6px">' +
-      'google-chrome --enable-unsafe-swiftshader</code><br>' +
-      '<button id="nbRetry" style="margin-top:16px;padding:10px 22px;font-size:16px;font-weight:800;' +
-      'border:0;border-radius:10px;background:#2ee6ff;color:#081018;cursor:pointer">Réessayer</button></div></div>';
-    var b = document.getElementById('nbRetry');
-    if (b) b.addEventListener('click', function () { location.reload(); });
-  }
 
   G.fit = function () {
     var dpr = Math.min(window.devicePixelRatio || 1, 2);

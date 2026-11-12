@@ -44,6 +44,27 @@
     document.head.appendChild(s);
   };
 
+  H.fatal = function () {
+    var uiEl = document.getElementById('ui');
+    if (!uiEl) return;
+    uiEl.innerHTML = '<div style="position:absolute;inset:0;display:flex;align-items:center;' +
+      'justify-content:center;text-align:center;padding:24px;font-size:16px;line-height:1.7">' +
+      '<div style="max-width:680px"><h1 style="font-size:30px;margin-bottom:14px">NITRO BRAWL</h1>' +
+      '<b>WebGL est indisponible sur ce navigateur.</b><br>' +
+      '1) accélération matérielle désactivée → chrome://settings → activer ' +
+      '« Utiliser l\'accélération matérielle » puis relancer ;<br>' +
+      '2) pas de GPU actif → Chrome bloque le WebGL logiciel : lance-le avec ' +
+      '<code style="background:rgba(255,255,255,.12);padding:2px 8px;border-radius:6px">' +
+      'google-chrome --enable-unsafe-swiftshader</code><br>' +
+      '3) sur ce poste : pilote NVIDIA à moitié mis à jour (module noyau ≠ bibliothèque) → ' +
+      '<b>un redémarrage</b> rend le GPU (et le WebGL Chrome) opérationnel ;<br>' +
+      '4) Firefox fonctionne déjà (WebGL logiciel Mesa) : ouvre le jeu dedans.<br>' +
+      '<button id="nbRetry" style="margin-top:16px;padding:10px 22px;font-size:16px;font-weight:800;' +
+      'border:0;border-radius:10px;background:#2ee6ff;color:#081018;cursor:pointer">Réessayer</button></div></div>';
+    var b = document.getElementById('nbRetry');
+    if (b) b.addEventListener('click', function () { location.reload(); });
+  };
+
   H.init = function () {
     if (typeof document === 'undefined' || H.done) return;
     H.done = true;
