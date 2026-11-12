@@ -1132,6 +1132,306 @@ touch-action:none;user-select:none;-webkit-user-select:none;overscroll-behavior:
   NB.util = U;
 })(window.NB = window.NB || {});
 
+/* ==== gltf.js (131 lignes) ==== */
+// NITRO BRAWL — mini-chargeur GLB (sans dépendance) : géométrie + couleurs de matériaux,
+// hiérarchie de nœuds aplatie en parts {mesh, mat, name}. Textures ignorées (CC0 Kenney : couleurs planes).
+(function (NB) {
+  'use strict';
+  var M = NB.M;
+  var L = {};
+
+  function readAccessor(g, bin, idx) {
+    var a = g.accessors[idx], bv = g.bufferViews[a.bufferView];
+    var off = (bv.byteOffset || 0) + (a.byteOffset || 0);
+    var n = a.count;
+    var comp = { x: 1, VEC2: 2, VEC3: 3, VEC4: 4 }[a.type] || 1;
+    var out = new Float32Array(n * comp);
+    var i, j;
+    if (a.componentType === 5126) {
+      var f = new Float32Array(bin, off, n * comp);
+      out.set(f);
+    } else if (a.componentType === 5123) {
+      var u = new Uint16Array(bin, off, n * comp);
+      for (i = 0; i < u.length; i++) out[i] = u[i];
+    } else if (a.componentType === 5125) {
+      var u32 = new Uint32Array(bin, off, n * comp);
+      for (i = 0; i < u32.length; i++) out[i] = u32[i];
+    } else if (a.componentType === 5121) {
+      var u8 = new Uint8Array(bin, off, n * comp);
+      for (i = 0; i < u8.length; i++) out[i] = u8[i] / 255;
+    }
+    return { data: out, comp: comp, count: n };
+  }
+
+  function nodeMatrix(n) {
+    var m = M.create();
+    if (n.matrix) { m.set(n.matrix); return m; }
+    var t = n.translation || [0, 0, 0];
+    var r = n.rotation || [0, 0, 0, 1];
+    var s = n.scale || [1, 1, 1];
+    var x = r[0], y = r[1], z = r[2], w = r[3];
+    var x2 = x + x, y2 = y + y, z2 = z + z;
+    var xx = x * x2, xy = x * y2, xz = x * z2, yy = y * y2, yz = y * z2, zz = z * z2;
+    var wx = w * x2, wy = w * y2, wz = w * z2;
+    m[0] = (1 - (yy + zz)) * s[0]; m[1] = (xy + wz) * s[0]; m[2] = (xz - wy) * s[0];
+    m[4] = (xy - wz) * s[1]; m[5] = (1 - (xx + zz)) * s[1]; m[6] = (yz + wx) * s[1];
+    m[8] = (xz + wy) * s[2]; m[9] = (yz - wx) * s[2]; m[10] = (1 - (xx + yy)) * s[2];
+    m[12] = t[0]; m[13] = t[1]; m[14] = t[2];
+    return m;
+  }
+
+  function matColor(g, matIdx, fallback) {
+    if (matIdx == null || !g.materials || !g.materials[matIdx]) return fallback;
+    var m = g.materials[matIdx];
+    var pbr = m.pbrMetallicRoughness || {};
+    var c = pbr.baseColorFactor || fallback;
+    return { color: [c[0], c[1], c[2]], name: m.name || '' };
+  }
+
+  function flatNormal(p0, p1, p2) {
+    var e1 = [p1[0] - p0[0], p1[1] - p0[1], p1[2] - p0[2]];
+    var e2 = [p2[0] - p0[0], p2[1] - p0[1], p2[2] - p0[2]];
+    return M.norm(M.cross(e1, e2));
+  }
+
+  // renvoie { parts: [ {name, color, verts:Float32Array(pos3 normal3 color3), mat:Float32Array16} ] }
+  L.parse = function (buf) {
+    var dv = new DataView(buf);
+    var magic = dv.getUint32(0, true), len = dv.getUint32(8, true);
+    if (magic !== 0x46546c67) return null;
+    var off = 12, json = null, bin = null;
+    while (off < len) {
+      var clen = dv.getUint32(off, true), ctype = dv.getUint32(off + 4, true);
+      if (ctype === 0x4e4f534a) json = JSON.parse(new TextDecoder().decode(new Uint8Array(buf, off + 8, clen)));
+      else bin = buf.slice(off + 8, off + 8 + clen);
+      off += 8 + clen;
+    }
+    if (!json) return null;
+    var parts = [];
+    var nodes = json.nodes || [];
+    function walk(ni, parent) {
+      var n = nodes[ni];
+      var local = nodeMatrix(n);
+      var world = M.create();
+      M.multiply(world, parent, local);
+      if (n.mesh != null) {
+        var mesh = json.meshes[n.mesh];
+        for (var pi = 0; pi < mesh.primitives.length; pi++) {
+          var pr = mesh.primitives[pi];
+          var pos = readAccessor(json, bin, pr.attributes.POSITION);
+          var nrm = pr.attributes.NORMAL != null ? readAccessor(json, bin, pr.attributes.NORMAL) : null;
+          var idx = pr.indices != null ? readAccessor(json, bin, pr.indices) : null;
+          var mc = matColor(json, pr.material, [0.8, 0.8, 0.8]);
+          var triCount = idx ? idx.count / 3 : pos.count / 3;
+          var verts = new Float32Array(triCount * 3 * 9);
+          var vi = 0;
+          for (var t = 0; t < triCount; t++) {
+            var i0 = idx ? idx.data[t * 3] : t * 3;
+            var i1 = idx ? idx.data[t * 3 + 1] : t * 3 + 1;
+            var i2 = idx ? idx.data[t * 3 + 2] : t * 3 + 2;
+            var p0 = [pos.data[i0 * 3], pos.data[i0 * 3 + 1], pos.data[i0 * 3 + 2]];
+            var p1 = [pos.data[i1 * 3], pos.data[i1 * 3 + 1], pos.data[i1 * 3 + 2]];
+            var p2 = [pos.data[i2 * 3], pos.data[i2 * 3 + 1], p2z(pos, i2)];
+            var fn = nrm ? null : flatNormal(p0, p1, p2);
+            var ids = [i0, i1, i2], ps = [p0, p1, p2];
+            for (var k = 0; k < 3; k++) {
+              var nn = nrm ? [nrm.data[ids[k] * 3], nrm.data[ids[k] * 3 + 1], nrm.data[ids[k] * 3 + 2]] : fn;
+              verts[vi++] = ps[k][0]; verts[vi++] = ps[k][1]; verts[vi++] = ps[k][2];
+              verts[vi++] = nn[0]; verts[vi++] = nn[1]; verts[vi++] = nn[2];
+              verts[vi++] = mc.color[0]; verts[vi++] = mc.color[1]; verts[vi++] = mc.color[2];
+            }
+          }
+          parts.push({ name: n.name || ('part' + ni), matName: mc.name, verts: verts, mat: world });
+        }
+      }
+      (n.children || []).forEach(function (c) { walk(c, world); });
+    }
+    function p2z(pos, i) { return pos.data[i * 3 + 2]; }
+    var roots = json.scenes ? (json.scenes[json.scene || 0].nodes || []) : nodes.map(function (_, i) { return i; });
+    roots.forEach(function (r) { walk(r, M.create()); });
+    return { parts: parts };
+  };
+
+  L.load = function (url, cb) {
+    fetch(url).then(function (r) {
+      if (!r.ok) throw new Error('http ' + r.status);
+      return r.arrayBuffer();
+    }).then(function (buf) {
+      cb(null, L.parse(buf));
+    }).catch(function (e) { cb(e, null); });
+  };
+
+  NB.gltf = L;
+})(window.NB = window.NB || {});
+
+/* ==== models.js (167 lignes) ==== */
+// NITRO BRAWL — registre de modèles CC0 (Kenney Racing Kit) : chargement, teinte, roues séparées.
+// Repli procédural automatique si le fetch échoue (build offline / hors-ligne).
+(function (NB) {
+  'use strict';
+  var M = NB.M;
+  var MD = {};
+  MD.base = 'https://baptistefaisy.github.io/nitro-brawl/assets/kenney/';
+  MD.ready = false;
+  MD.cars = [];
+  MD.props = {};
+  var DARK_MATS = { carTire: 1, glass: 1, grey: 1, dark: 1, road: 1, _defaultMat: 1 };
+
+  function gpu(verts) {
+    if (!NB.gl || !NB.gl.gl || !NB.gl.gl()) return null;
+    return NB.gl.createMesh(verts);
+  }
+
+  function recenter(parts) {
+    var min = [1e9, 1e9, 1e9], max = [-1e9, -1e9, -1e9];
+    var p = [0, 0, 0];
+    parts.forEach(function (pt) {
+      for (var i = 0; i < pt.verts.length; i += 9) {
+        M.xformPoint(p, pt.mat, [pt.verts[i], pt.verts[i + 1], pt.verts[i + 2]]);
+        for (var k = 0; k < 3; k++) {
+          if (p[k] < min[k]) min[k] = p[k];
+          if (p[k] > max[k]) max[k] = p[k];
+        }
+      }
+    });
+    var cx = (min[0] + max[0]) / 2, cz = (min[2] + max[2]) / 2, oy = min[1];
+    var shift = M.create();
+    M.fromTranslation(shift, [-cx, -oy, -cz]);
+    parts.forEach(function (pt) {
+      var m = M.create();
+      M.multiply(m, shift, pt.mat);
+      pt.mat = m;
+    });
+    return { size: [max[0] - min[0], max[1] - min[1], max[2] - min[2]] };
+  }
+
+  function buildCar(name, parsed) {
+    var body = [], dark = [], wheels = [];
+    parsed.parts.forEach(function (pt) {
+      var isWheel = pt.name.toLowerCase().indexOf('wheel') === 0;
+      var isDark = DARK_MATS[pt.matName] || isWheel;
+      if (!isDark) {
+        for (var i = 6; i < pt.verts.length; i += 9) { pt.verts[i] = 1; pt.verts[i + 1] = 1; pt.verts[i + 2] = 1; }
+      }
+      var rec = { mesh: gpu(pt.verts), mat: pt.mat, name: pt.name, front: pt.name.indexOf('Front') > 0 };
+      if (!rec.mesh) return;
+      if (isWheel) wheels.push(rec);
+      else if (isDark) dark.push(rec);
+      else body.push(rec);
+    });
+    if (!body.length && !dark.length) return;
+    var all = body.concat(dark, wheels);
+    var info = recenter(all);
+    var scale = 1.9 / Math.max(0.001, info.size[2]);
+    MD.cars.push({ name: name, body: body, dark: dark, wheels: wheels, scale: scale });
+  }
+
+  function buildProp(name, parsed) {
+    var parts = [];
+    parsed.parts.forEach(function (pt) {
+      var mesh = gpu(pt.verts);
+      if (mesh) parts.push({ mesh: mesh, mat: pt.mat, name: pt.name, matName: pt.matName });
+    });
+    if (!parts.length) return;
+    var info = recenter(parts);
+    MD.props[name] = { parts: parts, size: info.size };
+  }
+
+  MD.loadAll = function (done) {
+    var cars = ['raceCarGreen', 'raceCarRed', 'raceCarOrange', 'raceCarWhite'];
+    var props = ['barrierRed', 'flagCheckers', 'lightPostModern', 'grandStandRound', 'treeSmall', 'pylon', 'roadBump'];
+    var list = cars.concat(props);
+    var pending = list.length;
+    if (typeof fetch === 'undefined') { if (done) done(); return; }
+    list.forEach(function (name) {
+      NB.gltf.load(MD.base + name + '.glb', function (err, parsed) {
+        pending--;
+        if (!err && parsed) {
+          if (cars.indexOf(name) >= 0) buildCar(name, parsed);
+          else buildProp(name, parsed);
+        }
+        if (pending === 0) {
+          MD.ready = MD.cars.length > 0;
+          NB.util.dbg('models ready', MD.ready, MD.cars.length, Object.keys(MD.props).length);
+          MD.apply();
+          if (done) done();
+        }
+      });
+    });
+    setTimeout(function () {
+      if (pending > 0) { pending = 0; MD.ready = MD.cars.length > 0; if (done) done(); }
+    }, 6000);
+  };
+
+  // affecte un modèle à chaque kart et reconstruit l'arène (props)
+  MD.apply = function () {
+    if (!MD.ready || !NB.game) return;
+    var ks = NB.game.karts || [];
+    for (var i = 0; i < ks.length; i++) {
+      ks[i].model = MD.cars[i % MD.cars.length];
+    }
+    if (NB.game.map && NB.arena) NB.game.arena = NB.arena.build(NB.game.map);
+  };
+
+  // fusionne une liste d'objets {prop,pos,yaw,scale} en UN seul mesh statique
+  MD.bakeProps = function (items) {
+    var total = 0, i, j, k;
+    for (i = 0; i < items.length; i++) {
+      var pr = items[i].prop;
+      if (!pr) continue;
+      for (j = 0; j < pr.parts.length; j++) total += pr.parts[j].mesh.data.length;
+    }
+    if (!total) return null;
+    var out = new Float32Array(total);
+    var off = 0, base = M.create(), m = M.create(), p = [0, 0, 0];
+    for (i = 0; i < items.length; i++) {
+      var it = items[i], prop = it.prop;
+      if (!prop) continue;
+      M.compose(base, it.pos, it.yaw || 0, [it.scale || 1, it.scale || 1, it.scale || 1]);
+      for (j = 0; j < prop.parts.length; j++) {
+        var part = prop.parts[j];
+        M.multiply(m, base, part.mat);
+        var v = part.mesh.data;
+        for (k = 0; k < v.length; k += 9) {
+          M.xformPoint(p, m, [v[k], v[k + 1], v[k + 2]]);
+          out[off++] = p[0]; out[off++] = p[1]; out[off++] = p[2];
+          out[off++] = v[k + 3]; out[off++] = v[k + 4]; out[off++] = v[k + 5];
+          out[off++] = v[k + 6]; out[off++] = v[k + 7]; out[off++] = v[k + 8];
+        }
+      }
+    }
+    return gpu(out);
+  };
+
+  // dessine un modèle (parts) avec une matrice de base ; wheels optionnelles
+  MD.drawParts = function (parts, base, tint) {
+    var m = M.create();
+    for (var i = 0; i < parts.length; i++) {
+      M.multiply(m, base, parts[i].mat);
+      if (tint) NB.gl.drawTinted(parts[i].mesh, m, tint);
+      else NB.gl.draw(parts[i].mesh, m);
+    }
+  };
+
+  MD.drawCar = function (car, pos, yaw, scale, tint, wheelSpin, steer) {
+    var base = M.create();
+    M.compose(base, pos, yaw + Math.PI, [scale, scale, scale]);
+    MD.drawParts(car.body, base, tint);
+    MD.drawParts(car.dark, base, null);
+    var wm = M.create(), spin = M.create(), st = M.create();
+    for (var i = 0; i < car.wheels.length; i++) {
+      var w = car.wheels[i];
+      M.fromRotationX(spin, wheelSpin || 0);
+      if (w.front && steer) { M.fromRotationY(st, steer * 0.4); M.multiply(spin, st, spin); }
+      M.multiply(wm, base, w.mat);
+      M.multiply(wm, wm, spin);
+      NB.gl.draw(w.mesh, wm);
+    }
+  };
+
+  NB.models = MD;
+})(window.NB = window.NB || {});
+
 /* ==== maps.js (217 lignes) ==== */
 // NITRO BRAWL — 4 arènes procédurales (layouts)
 (function (NB) {
@@ -1350,7 +1650,7 @@ touch-action:none;user-select:none;-webkit-user-select:none;overscroll-behavior:
   NB.maps = maps;
 })(window.NB = window.NB || {});
 
-/* ==== arena.js (350 lignes) ==== */
+/* ==== arena.js (403 lignes) ==== */
 // NITRO BRAWL — arène : géométrie GPU, collision AABB, raycast, minimap, navigation
 (function (NB) {
   'use strict';
@@ -1457,6 +1757,8 @@ touch-action:none;user-select:none;-webkit-user-select:none;overscroll-behavior:
     var b3 = NB.mesh.builder();
     buildDecor(b3, L, th);
     if (b3.count()) addMesh(a, b3.build());
+    var pm = buildProps(L, th);
+    if (pm) a.meshes.push({ mesh: pm, mat: null });
   }
 
   function addMesh(a, f32) {
@@ -1538,6 +1840,57 @@ touch-action:none;user-select:none;-webkit-user-select:none;overscroll-behavior:
   function over(c, k) { return [c[0] * k, c[1] * k, c[2] * k]; }
 
   function glowK(th) { return th.neonGrid ? 1.7 : 1.0; }
+
+  function buildProps(L, th) {
+    if (!NB.models || !NB.models.ready) return null;
+    var P = NB.models.props, items = [], i;
+    var w = L.floor.w, d = L.floor.d;
+    var bw = P.barrierRed;
+    if (bw) {
+      for (i = -w / 2 + 3; i < w / 2 - 2; i += 3) {
+        items.push({ prop: bw, pos: [i, 0, -d / 2 + 1.4], yaw: 0, scale: 1 });
+        items.push({ prop: bw, pos: [i, 0, d / 2 - 1.4], yaw: Math.PI, scale: 1 });
+      }
+      for (i = -d / 2 + 3; i < d / 2 - 2; i += 3) {
+        items.push({ prop: bw, pos: [-w / 2 + 1.4, 0, i], yaw: Math.PI / 2, scale: 1 });
+        items.push({ prop: bw, pos: [w / 2 - 1.4, 0, i], yaw: -Math.PI / 2, scale: 1 });
+      }
+    }
+    if (P.flagCheckers) {
+      var f = P.flagCheckers;
+      [[-1, -1], [1, -1], [-1, 1], [1, 1]].forEach(function (sg) {
+        items.push({ prop: f, pos: [sg[0] * (w / 2 - 5), 0, sg[1] * (d / 2 - 5)], yaw: sg[0] > 0 ? -0.6 : 0.6, scale: 2 });
+      });
+    }
+    if (P.lightPostModern) {
+      var l = P.lightPostModern;
+      [[-1, -1], [1, -1], [-1, 1], [1, 1]].forEach(function (sg) {
+        items.push({ prop: l, pos: [sg[0] * (w / 2 - 3.5), 0, sg[1] * (d / 2 - 3.5)], yaw: 0, scale: 1.6 });
+      });
+    }
+    if (P.grandStandRound) {
+      var g = P.grandStandRound;
+      [[-1, -1], [1, -1], [-1, 1], [1, 1]].forEach(function (sg) {
+        items.push({ prop: g, pos: [sg[0] * (w / 2 + 7), 0, sg[1] * (d / 2 + 7)], yaw: sg[0] > 0 ? -2.3 : 2.3, scale: 3.2 });
+      });
+    }
+    if (P.treeSmall) {
+      var t = P.treeSmall;
+      for (i = 0; i < 14; i++) {
+        var a = i / 14 * Math.PI * 2;
+        var rad = Math.max(w, d) * 0.62 + 6;
+        items.push({ prop: t, pos: [Math.cos(a) * rad, 0, Math.sin(a) * rad], yaw: i * 1.7, scale: 1.6 });
+      }
+    }
+    if (P.pylon) {
+      var py = P.pylon;
+      for (i = 0; i < L.ramps.length; i++) {
+        var r = L.ramps[i];
+        items.push({ prop: py, pos: [r.x + 3.6, 0, r.z + 3.6], yaw: 0, scale: 1 });
+      }
+    }
+    return NB.models.bakeProps(items);
+  }
 
   function buildDecor(b, L, th) {
     for (var i = 0; i < L.decorations.length; i++) {
@@ -1701,7 +2054,7 @@ touch-action:none;user-select:none;-webkit-user-select:none;overscroll-behavior:
   NB.arena = arena;
 })(window.NB = window.NB || {});
 
-/* ==== kart.js (307 lignes) ==== */
+/* ==== kart.js (317 lignes) ==== */
 // NITRO BRAWL — physique arcade du kart : adhérence, drift, rampes, sauts, collisions
 (function (NB) {
   'use strict';
@@ -1990,6 +2343,16 @@ touch-action:none;user-select:none;-webkit-user-select:none;overscroll-behavior:
   K.drawOne = function (k) {
     var m = meshes();
     if (!m.body) return;
+    if (k.model && NB.models && NB.models.ready) {
+      NB.models.drawCar(k.model, k.pos, k.yaw, k.model.scale, k.color, k.wheelSpin, k.steer);
+      if (NB.fx) {
+        NB.fx.shadow(k.pos[0], k.pos[2], 1.15, k.onGround ? 0.34 : 0.16);
+        if (k.onGround) NB.fx.underglow(k.pos[0], k.pos[2], k.yaw, k.color);
+        if (k.shieldT > 0) NB.fx.shieldBubble(k.pos, k.shieldT);
+        if (k.ramT > 0) NB.fx.ramGlow(k.pos, k.yaw);
+      }
+      return;
+    }
     var mm = mat();
     M.composeFull(mm, k.pos, [k.tiltX, k.yaw, k.tiltZ], [1, 1, 1]);
     var flash = k.flashT > 0 ? 1 + k.flashT * 6 : 1;
@@ -4175,7 +4538,7 @@ touch-action:none;user-select:none;-webkit-user-select:none;overscroll-behavior:
   NB.qa = Q;
 })(window.NB = window.NB || {});
 
-/* ==== main.js (494 lignes) ==== */
+/* ==== main.js (496 lignes) ==== */
 // NITRO BRAWL — boucle de jeu, caméra, règles de match, bootstrap
 (function (NB) {
   'use strict';
@@ -4215,6 +4578,7 @@ touch-action:none;user-select:none;-webkit-user-select:none;overscroll-behavior:
     NB.audio.init();
     wireHud();
     NB.game = { phase: 'menu', karts: [], events: [], time: 0, shake: 0, slowmo: 1 };
+    if (NB.models) NB.models.loadAll();
     G.autopilot = /[?&]autopilot=1/.test(location.search);
     var qa = (location.search.match(/[?&]qa=([a-z0-9]+)/) || [])[1];
     var scr = (location.search.match(/[?&]screen=([a-z]+)/) || [])[1];
@@ -4328,6 +4692,7 @@ touch-action:none;user-select:none;-webkit-user-select:none;overscroll-behavior:
         arena: arena, difficulty: g.difficulty
       });
       k.lives = g.mode === 'elimination' ? 1 : 99;
+      if (NB.models && NB.models.ready) k.model = NB.models.cars[i % NB.models.cars.length];
       k.out = false;
       g.karts.push(k);
       if (!isP || G.autopilot) NB.bots.attach(k, arena, g.difficulty);

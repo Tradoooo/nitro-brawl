@@ -37,6 +37,7 @@
     NB.audio.init();
     wireHud();
     NB.game = { phase: 'menu', karts: [], events: [], time: 0, shake: 0, slowmo: 1 };
+    if (NB.models) NB.models.loadAll();
     G.autopilot = /[?&]autopilot=1/.test(location.search);
     var qa = (location.search.match(/[?&]qa=([a-z0-9]+)/) || [])[1];
     var scr = (location.search.match(/[?&]screen=([a-z]+)/) || [])[1];
@@ -150,6 +151,7 @@
         arena: arena, difficulty: g.difficulty
       });
       k.lives = g.mode === 'elimination' ? 1 : 99;
+      if (NB.models && NB.models.ready) k.model = NB.models.cars[i % NB.models.cars.length];
       k.out = false;
       g.karts.push(k);
       if (!isP || G.autopilot) NB.bots.attach(k, arena, g.difficulty);

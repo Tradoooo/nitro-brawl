@@ -6,7 +6,7 @@ import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs';
 import { execSync } from 'node:child_process';
 
 const ORDER = [
-  'math.js', 'gl.js', 'mesh.js', 'util.js', 'maps.js', 'arena.js', 'kart.js',
+  'math.js', 'gl.js', 'mesh.js', 'util.js', 'gltf.js', 'models.js', 'maps.js', 'arena.js', 'kart.js',
   'pickups.js', 'weapons.js', 'bots.js', 'fx.js', 'audio.js', 'hud-css.js', 'hud.js', 'input.js', 'camera.js', 'qa.js', 'main.js'
 ];
 

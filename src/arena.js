@@ -104,6 +104,8 @@
     var b3 = NB.mesh.builder();
     buildDecor(b3, L, th);
     if (b3.count()) addMesh(a, b3.build());
+    var pm = buildProps(L, th);
+    if (pm) a.meshes.push({ mesh: pm, mat: null });
   }
 
   function addMesh(a, f32) {
@@ -185,6 +187,57 @@
   function over(c, k) { return [c[0] * k, c[1] * k, c[2] * k]; }
 
   function glowK(th) { return th.neonGrid ? 1.7 : 1.0; }
+
+  function buildProps(L, th) {
+    if (!NB.models || !NB.models.ready) return null;
+    var P = NB.models.props, items = [], i;
+    var w = L.floor.w, d = L.floor.d;
+    var bw = P.barrierRed;
+    if (bw) {
+      for (i = -w / 2 + 3; i < w / 2 - 2; i += 3) {
+        items.push({ prop: bw, pos: [i, 0, -d / 2 + 1.4], yaw: 0, scale: 1 });
+        items.push({ prop: bw, pos: [i, 0, d / 2 - 1.4], yaw: Math.PI, scale: 1 });
+      }
+      for (i = -d / 2 + 3; i < d / 2 - 2; i += 3) {
+        items.push({ prop: bw, pos: [-w / 2 + 1.4, 0, i], yaw: Math.PI / 2, scale: 1 });
+        items.push({ prop: bw, pos: [w / 2 - 1.4, 0, i], yaw: -Math.PI / 2, scale: 1 });
+      }
+    }
+    if (P.flagCheckers) {
+      var f = P.flagCheckers;
+      [[-1, -1], [1, -1], [-1, 1], [1, 1]].forEach(function (sg) {
+        items.push({ prop: f, pos: [sg[0] * (w / 2 - 5), 0, sg[1] * (d / 2 - 5)], yaw: sg[0] > 0 ? -0.6 : 0.6, scale: 2 });
+      });
+    }
+    if (P.lightPostModern) {
+      var l = P.lightPostModern;
+      [[-1, -1], [1, -1], [-1, 1], [1, 1]].forEach(function (sg) {
+        items.push({ prop: l, pos: [sg[0] * (w / 2 - 3.5), 0, sg[1] * (d / 2 - 3.5)], yaw: 0, scale: 1.6 });
+      });
+    }
+    if (P.grandStandRound) {
+      var g = P.grandStandRound;
+      [[-1, -1], [1, -1], [-1, 1], [1, 1]].forEach(function (sg) {
+        items.push({ prop: g, pos: [sg[0] * (w / 2 + 7), 0, sg[1] * (d / 2 + 7)], yaw: sg[0] > 0 ? -2.3 : 2.3, scale: 3.2 });
+      });
+    }
+    if (P.treeSmall) {
+      var t = P.treeSmall;
+      for (i = 0; i < 14; i++) {
+        var a = i / 14 * Math.PI * 2;
+        var rad = Math.max(w, d) * 0.62 + 6;
+        items.push({ prop: t, pos: [Math.cos(a) * rad, 0, Math.sin(a) * rad], yaw: i * 1.7, scale: 1.6 });
+      }
+    }
+    if (P.pylon) {
+      var py = P.pylon;
+      for (i = 0; i < L.ramps.length; i++) {
+        var r = L.ramps[i];
+        items.push({ prop: py, pos: [r.x + 3.6, 0, r.z + 3.6], yaw: 0, scale: 1 });
+      }
+    }
+    return NB.models.bakeProps(items);
+  }
 
   function buildDecor(b, L, th) {
     for (var i = 0; i < L.decorations.length; i++) {

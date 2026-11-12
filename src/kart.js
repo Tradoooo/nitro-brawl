@@ -286,6 +286,16 @@
   K.drawOne = function (k) {
     var m = meshes();
     if (!m.body) return;
+    if (k.model && NB.models && NB.models.ready) {
+      NB.models.drawCar(k.model, k.pos, k.yaw, k.model.scale, k.color, k.wheelSpin, k.steer);
+      if (NB.fx) {
+        NB.fx.shadow(k.pos[0], k.pos[2], 1.15, k.onGround ? 0.34 : 0.16);
+        if (k.onGround) NB.fx.underglow(k.pos[0], k.pos[2], k.yaw, k.color);
+        if (k.shieldT > 0) NB.fx.shieldBubble(k.pos, k.shieldT);
+        if (k.ramT > 0) NB.fx.ramGlow(k.pos, k.yaw);
+      }
+      return;
+    }
     var mm = mat();
     M.composeFull(mm, k.pos, [k.tiltX, k.yaw, k.tiltZ], [1, 1, 1]);
     var flash = k.flashT > 0 ? 1 + k.flashT * 6 : 1;
