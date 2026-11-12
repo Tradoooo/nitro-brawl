@@ -40,6 +40,7 @@
     if (NB.models) NB.models.loadAll();
     G.autopilot = /[?&]autopilot=1/.test(location.search);
     var qa = (location.search.match(/[?&]qa=([a-z0-9]+)/) || [])[1];
+    G.qaProbe = /[?&]qa=/.test(location.search);
     var scr = (location.search.match(/[?&]screen=([a-z]+)/) || [])[1];
     if (qa === 'ingame' || qa === 'touch') {
       NB.qa.ingame(qa === 'touch');
@@ -193,6 +194,7 @@
   // ---------- boucle ----------
   function frame() {
     raf = requestAnimationFrame(frame);
+    if (NB.qa && NB.qa.skip()) return;
     var t = NB.util.now();
     var dt = Math.min(0.05, Math.max(0.0005, t - lastT));
     lastT = t;
@@ -209,7 +211,7 @@
       NB.util.dbg('fatal frame error', e && e.stack || e);
       throw e;
     }
-    if (G.frozen && NB.qa) NB.qa.tick();
+    if (NB.qa && G.qaProbe) NB.qa.tick();
     NB.input.endFrame();
   }
 
@@ -473,7 +475,7 @@
       out.ok = false;
       out.errors.push(String((e && e.stack) || e));
     }
-    if (/[?&]freeze=1/.test(location.search)) G.frozen = true;
+    if (/[?&]freeze=1/.test(location.search)) { G.frozen = true; window.__READY = true; }
     window.__SELFTEST = out;
     document.title = 'SELFTEST ' + JSON.stringify(out).slice(0, 900);
     var d = document.createElement('pre');

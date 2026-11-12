@@ -86,7 +86,7 @@
       var mesh = meshFor(p.kind);
       if (!mesh) continue;
       var y = p.pos[1] + Math.sin(p.t * 2.4) * 0.16;
-      M.composeFull(m, [p.pos[0], y, p.pos[2]], [Math.sin(p.t) * 0.3, p.t * 1.8, 0], [1, 1, 1]);
+      M.composeFull(m, [p.pos[0], y, p.pos[2]], [Math.sin(p.t) * 0.3, p.t * 1.8, 0], [1.35, 1.35, 1.35]);
       NB.gl.draw(mesh, m);
       NB.gl.sprite(p.pos[0], 0.08, p.pos[2], 2.2, P.COLORS[p.kind], 0.22, true);
       NB.gl.sprite(p.pos[0], y, p.pos[2], 1.1, P.COLORS[p.kind], 0.16, true);

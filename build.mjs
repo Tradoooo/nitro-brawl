@@ -65,11 +65,22 @@ for (const f of ORDER) {
 if (problems) { console.error(`\n${problems} problème(s) — build non écrit.`); process.exit(1); }
 if (onlyCheck) { console.log('OK : tous les modules présents, syntaxe valide.'); process.exit(0); }
 
+const INLINE_MODELS = ['raceCarGreen', 'barrierRed', 'flagCheckers', 'pylon', 'lightPostModern'];
+let modelsScript = '';
+const b64 = {};
+for (const name of INLINE_MODELS) {
+  const f = `assets/kenney/${name}.glb`;
+  if (existsSync(f)) b64[name] = readFileSync(f).toString('base64');
+}
+if (Object.keys(b64).length) {
+  modelsScript = `<script>window.NB_GLB=${JSON.stringify(b64)};</script>\n`;
+}
+
 const bundle = parts.join('\n');
 mkdirSync('dist', { recursive: true });
 
 // 1) variante CDN (légère)
-const cdnHtml = SHELL_HEAD + `<script src="${THREE_CDN}"></script>\n<script>\n${bundle}\n</script>` + SHELL_FOOT;
+const cdnHtml = SHELL_HEAD + `<script src="${THREE_CDN}"></script>\n${modelsScript}<script>\n${bundle}\n</script>` + SHELL_FOOT;
 writeFileSync('dist/index.html', cdnHtml, 'utf8');
 writeFileSync('index.html', cdnHtml, 'utf8');   // racine du repo : servi tel quel par GitHub Pages
 
@@ -77,7 +88,7 @@ writeFileSync('index.html', cdnHtml, 'utf8');   // racine du repo : servi tel qu
 let threeSrc = '';
 if (existsSync(THREE_LOCAL)) threeSrc = readFileSync(THREE_LOCAL, 'utf8');
 if (threeSrc) {
-  const offHtml = SHELL_HEAD + `<script>${threeSrc}\n</script>\n<script>\n${bundle}\n</script>` + SHELL_FOOT;
+  const offHtml = SHELL_HEAD + `<script>${threeSrc}\n</script>\n${modelsScript}<script>\n${bundle}\n</script>` + SHELL_FOOT;
   writeFileSync('dist/index.offline.html', offHtml, 'utf8');
   console.log(`dist/index.offline.html : ${(Buffer.byteLength(offHtml) / 1024).toFixed(0)} Ko (Three.js inliné)`);
 } else {

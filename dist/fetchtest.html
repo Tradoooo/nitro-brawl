@@ -1,0 +1,6 @@
+<html><body><script>
+fetch('https://baptistefaisy.github.io/nitro-brawl/assets/kenney/raceCarGreen.glb')
+ .then(function(r){ return r.arrayBuffer().then(function(b){ document.title='FETCH ok '+r.status+' '+b.byteLength; }); })
+ .catch(function(e){ document.title='FETCH fail '+e.message; });
+setTimeout(function(){ if(!/FETCH/.test(document.title)) document.title='FETCH timeout'; }, 8000);
+</script></body></html>

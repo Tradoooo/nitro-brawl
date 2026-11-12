@@ -132,13 +132,25 @@
     return px[0] + ',' + px[1] + ',' + px[2];
   };
 
+  // en headless/QA : rend 1 frame sur 12 tant que les modèles chargent
+  // (laisse le thread principal traiter les tâches réseau)
+  Q.skip = function () {
+    if (!NB.game.qaProbe || !NB.models || NB.models.settled) return false;
+    Q.skipN = (Q.skipN || 0) + 1;
+    return Q.skipN % 12 !== 0;
+  };
+
   Q.tick = function () {
     if (Q.done) return;
     if (/[?&]probe=1/.test(location.search)) {
       Q.done = true;
       var W = NB.gl.width, H = NB.gl.height;
       document.title = 'PROBE under=' + Q.probe(W / 2, H * 0.28) +
-        ' floor=' + Q.probe(W / 2, H * 0.12) + ' sky=' + Q.probe(W / 2, H * 0.9);
+        ' floor=' + Q.probe(W / 2, H * 0.12) + ' sky=' + Q.probe(W / 2, H * 0.9) +
+        ' models=' + (NB.models ? (NB.models.ready + '/' + NB.models.settled + '/' + NB.models.cars.length) : 'none') +
+        ' props=' + (NB.models ? Object.keys(NB.models.props).length : 0) + '/' + (NB.models ? NB.models.lastItems : 0) +
+        ' meshes=' + (NB.game.arena ? NB.game.arena.meshes.length : 0) + ' err=' + (NB.models && NB.models.err ? NB.models.err.slice(0, 90) : 'none') +
+        ' called=' + (NB.models && NB.models.called) + ' bootErr=' + (NB.main.modelsBootErr || '-') + ' fetch=' + typeof fetch + ' diag=' + (NB.models.diag || '-');
     } else if (/[?&]png=1/.test(location.search)) {
       Q.done = true;
       var pre = document.createElement('pre');
@@ -149,6 +161,14 @@
   };
 
   Q.draw = function (name) {
+    var g = NB.game;
+    if (g.freezeWhenSettled && NB.models && NB.models.settled) {
+      g.freezeWhenSettled = false;
+      NB.models.apply();
+      NB.main.freeze(true);
+      window.__READY = true;
+      return;
+    }
     if (name === 'kart') {
       panels([
         function (a) { return camAt([0, 1.2, -4.2], [0, 0.6, 0], 0.9); },
@@ -215,7 +235,8 @@
     g.events.push({ t: 'kill', killerId: 0, victimId: 4, weapon: 'homing' });
     NB.main.dispatch(g);
     if (touch) NB.hud.setTouchVisible(true);
-    NB.main.freeze(true);
+    if (NB.models && NB.models.settled) { NB.main.freeze(true); window.__READY = true; }
+    else NB.game.freezeWhenSettled = true;
   };
 
   NB.qa = Q;

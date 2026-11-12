@@ -13,6 +13,16 @@ Inspiré des batailles d'arène de karts (Smash Karts) : 1 joueur + 7 bots, powe
 élimination en un coup, respawn, 2 modes de jeu, 4 arènes, rendu **Three.js** (r149).
 Géométrie et sons 100 % procéduraux : aucun asset externe.
 
+## Modèles 3D (CC0)
+
+Karts et props = **Kenney Racing Kit** (https://kenney.nl/assets/racing-kit, licence CC0,
+fourni dans `assets/kenney/` avec `KENNEY-LICENSE.txt`). Intégration :
+- `src/gltf.js` : parseur GLB minimal (positions/normales/indices/matériaux, hiérarchie aplatie) ;
+- `src/models.js` : registre, teinte par joueur, roues séparées (rotation + braquage),
+  props fusionnés en un seul mesh statique ;
+- les GLB utiles (~175 Ko) sont **inlinés en base64** dans le build → aucun réseau requis ;
+- repli procédural automatique si un modèle manque.
+
 ## Livrable
 
 ```

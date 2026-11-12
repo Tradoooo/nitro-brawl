@@ -70,7 +70,38 @@
     MD.props[name] = { parts: parts, size: info.size };
   }
 
+  function fromB64(b64) {
+    var bin = atob(b64);
+    var u = new Uint8Array(bin.length);
+    for (var i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i);
+    return u.buffer;
+  }
+
   MD.loadAll = function (done) {
+    MD.called = true;
+    var inline = window.NB_GLB || {};
+    var inlined = 0;
+    Object.keys(inline).forEach(function (name) {
+      try {
+        var parsed = NB.gltf.parse(fromB64(inline[name]));
+        if (parsed) {
+          if (name.indexOf('raceCar') === 0) buildCar(name, parsed);
+          else buildProp(name, parsed);
+          inlined++;
+        }
+      } catch (e) { MD.err = (MD.err || '') + name + ':' + e.message + ' '; }
+    });
+    if (inlined) {
+      MD.ready = MD.cars.length > 0;
+      MD.settled = true;
+      MD.apply();
+      if (/[?&]qa=/.test(location.search)) window.__READY = true;
+      if (done) done();
+      return;
+    }
+    try {
+      fetch(MD.base + 'raceCarGreen.glb').then(function (r) { MD.diag = 'ok ' + r.status; }).catch(function (e) { MD.diag = 'fail ' + e.message; });
+    } catch (e) { MD.diag = 'throw ' + e.message; }
     var cars = ['raceCarGreen', 'raceCarRed', 'raceCarOrange', 'raceCarWhite'];
     var props = ['barrierRed', 'flagCheckers', 'lightPostModern', 'grandStandRound', 'treeSmall', 'pylon', 'roadBump'];
     var list = cars.concat(props);
@@ -79,20 +110,23 @@
     list.forEach(function (name) {
       NB.gltf.load(MD.base + name + '.glb', function (err, parsed) {
         pending--;
+        if (err) MD.err = (MD.err || '') + name + ':' + err.message + ' ';
         if (!err && parsed) {
           if (cars.indexOf(name) >= 0) buildCar(name, parsed);
           else buildProp(name, parsed);
         }
         if (pending === 0) {
           MD.ready = MD.cars.length > 0;
+          MD.settled = true;
           NB.util.dbg('models ready', MD.ready, MD.cars.length, Object.keys(MD.props).length);
           MD.apply();
+          if (/[?&]qa=/.test(location.search)) window.__READY = true;
           if (done) done();
         }
       });
     });
     setTimeout(function () {
-      if (pending > 0) { pending = 0; MD.ready = MD.cars.length > 0; if (done) done(); }
+      if (pending > 0) { pending = 0; MD.ready = MD.cars.length > 0; MD.settled = true; MD.apply(); if (done) done(); }
     }, 6000);
   };
 

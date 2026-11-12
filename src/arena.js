@@ -139,7 +139,7 @@
 
   // plan infini quadrillé sous l'arène : horizon synthwave, cache le vide
   function horizonGrid(b, th, w, d) {
-    var dark = th.void || [0.05, 0.04, 0.09];
+    var dark = th.void || [th.ground[0] * 0.35, th.ground[1] * 0.35, th.ground[2] * 0.4];
     b.plane(0, -0.7, 0, 700, 700, dark);
     var gg = over(th.gridColor || th.accent, 0.9);
     for (var i = -8; i <= 8; i++) {
@@ -194,13 +194,14 @@
     var w = L.floor.w, d = L.floor.d;
     var bw = P.barrierRed;
     if (bw) {
-      for (i = -w / 2 + 3; i < w / 2 - 2; i += 3) {
-        items.push({ prop: bw, pos: [i, 0, -d / 2 + 1.4], yaw: 0, scale: 1 });
-        items.push({ prop: bw, pos: [i, 0, d / 2 - 1.4], yaw: Math.PI, scale: 1 });
+      var ix = w / 2 - 3.1, iz = d / 2 - 3.1;
+      for (i = -ix + 1; i < ix - 1; i += 2.2) {
+        items.push({ prop: bw, pos: [i, 0, -iz], yaw: 0, scale: 1 });
+        items.push({ prop: bw, pos: [i, 0, iz], yaw: Math.PI, scale: 1 });
       }
-      for (i = -d / 2 + 3; i < d / 2 - 2; i += 3) {
-        items.push({ prop: bw, pos: [-w / 2 + 1.4, 0, i], yaw: Math.PI / 2, scale: 1 });
-        items.push({ prop: bw, pos: [w / 2 - 1.4, 0, i], yaw: -Math.PI / 2, scale: 1 });
+      for (i = -iz + 1; i < iz - 1; i += 2.2) {
+        items.push({ prop: bw, pos: [-ix, 0, i], yaw: Math.PI / 2, scale: 1 });
+        items.push({ prop: bw, pos: [ix, 0, i], yaw: -Math.PI / 2, scale: 1 });
       }
     }
     if (P.flagCheckers) {
